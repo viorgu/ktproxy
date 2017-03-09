@@ -1,0 +1,39 @@
+group 'net.mready'
+version '0.1.0-SNAPSHOT'
+
+buildscript {
+    ext.kotlin_version = '1.1.0'
+
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+apply plugin: 'kotlin'
+
+repositories {
+    jcenter()
+
+    maven {
+        url 'https://dl.bintray.com/kotlin/kotlin-eap-1.1'
+    }
+}
+
+kotlin {
+    experimental {
+        coroutines 'enable'
+    }
+}
+
+dependencies {
+    compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-core:0.12'
+    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:0.12'
+    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-nio:0.12'
+
+    compile 'io.netty:netty-all:4.1.8.Final'
+    compile 'com.google.guava:guava:21.0'
+}
