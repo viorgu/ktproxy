@@ -1,10 +1,12 @@
+package kproxy
+
 import com.google.common.net.HostAndPort
 import io.netty.bootstrap.Bootstrap
-import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
 import io.netty.channel.*
 import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.http.*
+import io.netty.handler.ssl.SslHandler
 import kotlinx.coroutines.experimental.Job
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
@@ -14,6 +16,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.SSLEngine
 import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 
 
@@ -46,8 +49,6 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                                 val server = findServerConnection(hostAndPort)
                                 server?.write(it)
                             }
-                            is HttpContent -> TODO()
-                            is ByteBuf -> TODO()
                             null -> Unit
                             else -> TODO("Got $it")
                         }
@@ -98,6 +99,64 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
             serverConnections[hostAndPort] = server
             return server
         }
+    }
+
+    fun startMitm(remoteAddress: InetSocketAddress, mitmManager: MitmManager) {
+        channel.config().isAutoRead = false
+
+        job = launch(Unconfined) {
+            val sslEngineServer = mitmManager.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
+            val server = ServerConnection(remoteAddress, sslEngine = sslEngineServer)
+            try {
+                server.connect()
+            } catch (e: IOException) {
+                write(buildResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway"))
+                return@launch
+            }
+
+            val sslEngineClient = mitmManager.clientSslEngineFor(remoteAddress.hostName, sslEngineServer.session)
+            encryptChannel(channel.pipeline(), sslEngineClient)
+
+            while (channel.isActive) {
+                select<Unit> {
+                    readChannel.onReceiveOrNull {
+                        when (it) {
+                            is HttpRequest -> {
+                                server.write(it)
+                            }
+                            null -> server.disconnect()
+                            else -> TODO()
+                        }
+                    }
+
+                    server.readChannel.onReceiveOrNull {
+                        when (it) {
+                            is HttpResponse -> {
+                                write(it)
+                            }
+                            null -> disconnect()
+                            else -> TODO()
+                        }
+                    }
+                }
+            }
+        }
+
+        job?.invokeOnCompletion {
+            log("client-mitm connection closed")
+        }
+    }
+
+    private suspend fun encryptChannel(pipeline: ChannelPipeline, sslEngine: SSLEngine) {
+        sslEngine.useClientMode = false
+        sslEngine.needClientAuth = false
+
+        val handler = SslHandler(sslEngine)
+        pipeline.addFirst("ssl", handler)
+
+        channel.config().isAutoRead = true
+
+        handler.handshakeFuture().awaitComplete()
     }
 
     fun startTunneling(remoteAddress: InetSocketAddress) {
@@ -165,6 +224,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
 
 class ServerConnection(
         val remoteAddress: InetSocketAddress,
+        val sslEngine: SSLEngine? = null,
         val tunnel: Boolean = false) : ChannelAdapter("server") {
     override lateinit var channel: Channel
 
@@ -175,13 +235,16 @@ class ServerConnection(
             //option(ChannelOption.CONNECT_TIMEOUT_MILLIS, proxyServer.connectTimeout)
         }
 
-        bootstrap.handler(object : ChannelInitializer<io.netty.channel.Channel>() {
-            override fun initChannel(ch: io.netty.channel.Channel) {
+        bootstrap.handler(object : ChannelInitializer<Channel>() {
+            override fun initChannel(ch: Channel) {
                 initPipeline(ch.pipeline())
             }
         })
 
         channel = bootstrap.connect(remoteAddress).awaitChannel()
+        if (sslEngine != null) {
+            encryptChannel(channel.pipeline(), sslEngine)
+        }
     }
 
     private fun initPipeline(pipeline: ChannelPipeline) {
@@ -195,11 +258,21 @@ class ServerConnection(
 
         pipeline.addLast("handler", this)
     }
+
+    private suspend fun encryptChannel(pipeline: ChannelPipeline, sslEngine: SSLEngine) {
+        sslEngine.useClientMode = true
+        sslEngine.needClientAuth = false
+
+        val handler = SslHandler(sslEngine)
+        pipeline.addFirst("ssl", handler)
+
+        handler.handshakeFuture().awaitComplete()
+    }
 }
 
 abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter() {
     abstract val channel: Channel
-    val readChannel = AsyncChannel<Any>()
+    val readChannel = kotlinx.coroutines.experimental.channels.Channel<Any>()
 
     suspend fun write(msg: Any, flush: Boolean = true) {
         if (flush) {
@@ -210,15 +283,22 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
     }
 
     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) = runBlocking<Unit> {
-        log("$name -- got $msg ${msg is HttpObject}")
+        log("""
+$name -- got:
+---------------
+$msg
+---------------""")
+
         readChannel.send(msg)
-        log("$name -- processed $msg")
+
+        log("$name -- processed message")
+
         //ReferenceCountUtil.release(msg)
     }
 
 
     suspend fun disconnect() {
-        if(channel.isOpen) {
+        if (channel.isOpen) {
             write(Unpooled.EMPTY_BUFFER, flush = true)
             channel.disconnect().awaitComplete()
         }
@@ -251,7 +331,7 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
     }
 
     override fun channelReadComplete(ctx: ChannelHandlerContext) {
-        //log("$name -- channelReadComplete")
+        //kproxy.log("$name -- channelReadComplete")
         super.channelReadComplete(ctx)
     }
 }
