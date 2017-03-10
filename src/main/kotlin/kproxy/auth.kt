@@ -1,9 +1,11 @@
 package kproxy
 
-import io.netty.handler.codec.http.HttpRequest
+import java.net.InetSocketAddress
 
-interface Authenticator {
-    fun authenticate(request: HttpRequest): UserContext?
+interface ProxyAuthenticator {
+    fun authenticate(clientAddress: InetSocketAddress, username: String, password: String): UserContext?
 }
 
-open class UserContext
+open class UserContext(val address: InetSocketAddress)
+
+class AnonymousUserContext(address: InetSocketAddress): UserContext(address)

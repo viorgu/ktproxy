@@ -329,9 +329,4 @@ $msg
 
         readChannel.close()
     }
-
-    override fun channelReadComplete(ctx: ChannelHandlerContext) {
-        //kproxy.log("$name -- channelReadComplete")
-        super.channelReadComplete(ctx)
-    }
 }

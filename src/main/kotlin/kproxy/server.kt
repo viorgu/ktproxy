@@ -1,5 +1,6 @@
 package kproxy
 
+import com.google.common.io.BaseEncoding
 import com.google.common.net.HostAndPort
 import io.netty.bootstrap.ServerBootstrap
 import io.netty.channel.Channel
@@ -7,6 +8,7 @@ import io.netty.channel.ChannelFactory
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioServerSocketChannel
+import io.netty.handler.codec.http.HttpHeaderNames
 import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpResponseStatus
 import io.netty.handler.codec.http.HttpUtil
@@ -16,6 +18,7 @@ import kotlinx.coroutines.experimental.runBlocking
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.UnknownHostException
+import java.nio.charset.Charset
 
 object EventLoops {
     val bossGroup = NioEventLoopGroup()
@@ -24,7 +27,7 @@ object EventLoops {
 }
 
 class ProxyServer(val port: Int = 8088,
-                  val authenticator: Authenticator? = null,
+                  val authenticator: ProxyAuthenticator? = null,
                   val interceptor: RequestInterceptor? = null) {
 
     fun start() {
@@ -51,7 +54,43 @@ class ProxyServer(val port: Int = 8088,
 
             val initialRequest = connection.readChannel.receive() as HttpRequest
 
-            val userContext = authenticator?.authenticate(initialRequest) ?: UserContext()
+            val clientAddress = connection.channel.remoteAddress() as InetSocketAddress
+
+            val userContext = if (authenticator != null) {
+                if (!initialRequest.headers().contains(HttpHeaderNames.PROXY_AUTHORIZATION)) {
+                    null
+                } else {
+                    val header = initialRequest.headers().get(HttpHeaderNames.PROXY_AUTHORIZATION)
+                    val value = header.substringAfter("Basic ").trim()
+
+                    try {
+                        val decodedString = String(BaseEncoding.base64().decode(value), Charset.forName("UTF-8"))
+
+                        val username = decodedString.substringBefore(":")
+                        val password = decodedString.substringAfter(":")
+
+                        authenticator.authenticate(
+                                clientAddress = clientAddress,
+                                username = username,
+                                password = password)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            } else {
+                AnonymousUserContext(clientAddress)
+            }
+
+            if (userContext == null) {
+                connection.write(buildResponse(HttpResponseStatus.PROXY_AUTHENTICATION_REQUIRED,
+                        body = "Proxy Authentication Required") {
+                    headers().set(HttpHeaderNames.PROXY_AUTHENTICATE, "Basic realm=\"Restricted Files\"")
+                })
+
+                connection.disconnect()
+                return@launch
+            }
+
             val requestHandler = interceptor?.intercept(initialRequest, userContext)
 
             val hostAndPort = initialRequest.identifyHostAndPort()
@@ -72,7 +111,7 @@ class ProxyServer(val port: Int = 8088,
                 val mitmManager = interceptor?.getMitmManager(initialRequest, userContext)
 
                 connection.write(buildResponse(HttpResponseStatus(200, "Connection established")))
-                if(mitmManager == null) {
+                if (mitmManager == null) {
                     connection.startTunneling(remoteAddress)
                 } else {
                     connection.startMitm(remoteAddress, mitmManager)
