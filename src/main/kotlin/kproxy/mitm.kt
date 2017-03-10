@@ -10,4 +10,5 @@ interface MitmManager {
     fun serverSslEngine(): SSLEngine
 
     fun clientSslEngineFor(hostname: String, serverSslSession: SSLSession): SSLEngine
+
 }

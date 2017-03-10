@@ -1,6 +1,6 @@
 package kproxy
 
-import io.netty.handler.codec.http.HttpRequest
+import io.netty.handler.codec.http.*
 import kotlinx.coroutines.experimental.runBlocking
 import net.lightbody.bmp.mitm.KeyStoreFileCertificateSource
 import net.lightbody.bmp.mitm.RootCertificateGenerator
@@ -8,6 +8,16 @@ import net.lightbody.bmp.mitm.manager.KProxyImpersonatingMitmManager
 import java.io.File
 import java.net.InetSocketAddress
 
+
+/*TODO:
+https://tools.ietf.org/html/rfc7230
+
+- Check connection healders
+- Add via
+- Absolute vs origin-form URI
+
+
+ */
 
 fun main(args: Array<String>) = runBlocking {
 
@@ -41,5 +51,25 @@ class Authenticator : ProxyAuthenticator {
 class Interceptor(val mitmManager: MitmManager?) : RequestInterceptor {
     override fun getMitmManager(request: HttpRequest, userContext: UserContext) = mitmManager
 
-    override fun intercept(request: HttpRequest, userContext: UserContext) = null
+    override fun intercept(request: HttpRequest, userContext: UserContext) = Handler(userContext)
+}
+
+class Handler(val userContext: UserContext) : RequestHandler {
+    override fun onClientRequest(httpObject: HttpObject): HttpResponse? {
+        if(httpObject is FullHttpRequest) {
+            log("request from ${userContext.address} for ${httpObject.uri()}")
+        }
+
+        //return buildResponse(body = "Hello world")
+        return null
+    }
+
+    override fun onServerResponse(httpObject: HttpObject): HttpResponse? {
+        if(httpObject is FullHttpResponse) {
+            return httpObject.apply {
+                headers().add("Hello", "World")
+            }
+        }
+        return null
+    }
 }

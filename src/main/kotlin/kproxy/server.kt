@@ -12,6 +12,7 @@ import io.netty.handler.codec.http.HttpHeaderNames
 import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpResponseStatus
 import io.netty.handler.codec.http.HttpUtil
+import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
@@ -74,6 +75,7 @@ class ProxyServer(val port: Int = 8088,
                                 username = username,
                                 password = password)
                     } catch (e: Exception) {
+                        e.printStackTrace()
                         null
                     }
                 }
@@ -82,27 +84,29 @@ class ProxyServer(val port: Int = 8088,
             }
 
             if (userContext == null) {
-                connection.write(buildResponse(HttpResponseStatus.PROXY_AUTHENTICATION_REQUIRED,
+                connection.writeResponse(HttpResponseStatus.PROXY_AUTHENTICATION_REQUIRED,
                         body = "Proxy Authentication Required") {
                     headers().set(HttpHeaderNames.PROXY_AUTHENTICATE, "Basic realm=\"Restricted Files\"")
-                })
+                }
 
+                ReferenceCountUtil.release(initialRequest)
                 connection.disconnect()
                 return@launch
             }
 
             val requestHandler = interceptor?.intercept(initialRequest, userContext)
-
-            val hostAndPort = initialRequest.identifyHostAndPort()
+            connection.handler = requestHandler
 
             val remoteAddress = try {
-                HostAndPort.fromString(hostAndPort).withDefaultPort(80).let {
+                HostAndPort.fromString(initialRequest.hostAndPort).withDefaultPort(80).let {
                     InetSocketAddress(InetAddress.getByName(it.host), it.port)
                 }
             } catch (e: UnknownHostException) {
-                connection.write(buildResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway") {
+                connection.writeResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway") {
                     HttpUtil.setKeepAlive(this, false)
-                })
+                }
+
+                ReferenceCountUtil.release(initialRequest)
                 connection.disconnect()
                 return@launch
             }
@@ -110,7 +114,9 @@ class ProxyServer(val port: Int = 8088,
             if (initialRequest.isConnect) {
                 val mitmManager = interceptor?.getMitmManager(initialRequest, userContext)
 
-                connection.write(buildResponse(HttpResponseStatus(200, "Connection established")))
+                ReferenceCountUtil.release(initialRequest)
+
+                connection.writeResponse(HttpResponseStatus(200, "Connection established"))
                 if (mitmManager == null) {
                     connection.startTunneling(remoteAddress)
                 } else {

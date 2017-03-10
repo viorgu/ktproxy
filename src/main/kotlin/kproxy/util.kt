@@ -14,26 +14,28 @@ fun log(message: String) = println("${Thread.currentThread().name} -- $message")
 
 private val HTTP_PREFIX = Regex("^https?://.*", RegexOption.IGNORE_CASE)
 
-val HttpRequest.isConnect get() = method() == HttpMethod.CONNECT
+val HttpRequest.isConnect
+    get() = method() == HttpMethod.CONNECT
 
-fun HttpRequest.identifyHostAndPort(): String {
-    val hostAndPort = if (!HTTP_PREFIX.matches(uri())) {
-        // Browsers particularly seem to send requests in this form when
-        // they use CONNECT.
-        uri()
-    } else {
-        uri().substringAfter("://")
-    }.substringBefore("/")
+val HttpRequest.hostAndPort: String
+    get() {
+        val hostAndPort = if (!HTTP_PREFIX.matches(uri())) {
+            // Browsers particularly seem to send requests in this form when
+            // they use CONNECT.
+            uri()
+        } else {
+            uri().substringAfter("://")
+        }.substringBefore("/")
 
-    return if (hostAndPort.isNullOrBlank()) {
-        headers().getAll(HttpHeaderNames.HOST)?.firstOrNull().orEmpty()
-    } else {
-        hostAndPort.orEmpty()
+        return if (hostAndPort.isNullOrBlank()) {
+            headers().getAll(HttpHeaderNames.HOST)?.firstOrNull().orEmpty()
+        } else {
+            hostAndPort.orEmpty()
+        }
     }
-}
 
 
-fun buildResponse(status: HttpResponseStatus,
+fun buildResponse(status: HttpResponseStatus = HttpResponseStatus.OK,
                   httpVersion: HttpVersion = HttpVersion.HTTP_1_1,
                   contentType: String = "text/html; charset=utf-8",
                   body: String? = null,
@@ -50,6 +52,7 @@ fun buildResponse(status: HttpResponseStatus,
     } else {
         DefaultFullHttpResponse(httpVersion, status)
     }
+
 
     block?.invoke(response)
 

@@ -7,6 +7,7 @@ import io.netty.channel.*
 import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.http.*
 import io.netty.handler.ssl.SslHandler
+import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Job
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
@@ -23,6 +24,7 @@ import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 class ClientConnection(override val channel: Channel) : ChannelAdapter("client") {
 
     var job: Job? = null
+    var handler: RequestHandler? = null
     val serverConnections = ConcurrentHashMap<String, ServerConnection>()
 
     init {
@@ -44,10 +46,14 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                                     disconnect()
                                 }
 
-                                val hostAndPort = it.identifyHostAndPort()
-
-                                val server = findServerConnection(hostAndPort)
-                                server?.write(it)
+                                val handlerResponse = handler?.onClientRequest(it)
+                                if (handlerResponse != null) {
+                                    ReferenceCountUtil.release(it)
+                                    write(handlerResponse)
+                                } else {
+                                    val server = findServerConnection(it.hostAndPort)
+                                    server?.write(it)
+                                }
                             }
                             null -> Unit
                             else -> TODO("Got $it")
@@ -56,11 +62,23 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
 
                     serverConnections.forEach { hostAndPort, server ->
                         server.readChannel.onReceiveOrNull {
-                            if (it == null) {
-                                log("server disconnected $hostAndPort")
-                                serverConnections.remove(hostAndPort)
-                            } else {
-                                write(it)
+                            when (it) {
+                                is HttpResponse -> {
+                                    val handlerResponse = handler?.onServerResponse(it)
+                                    if (handlerResponse != null) {
+                                        if (handlerResponse !== it) {
+                                            ReferenceCountUtil.release(it)
+                                        }
+                                        write(handlerResponse)
+                                    } else {
+                                        write(it)
+                                    }
+                                }
+                                null -> {
+                                    log("server disconnected $hostAndPort")
+                                    serverConnections.remove(hostAndPort)
+                                }
+                                else -> TODO("Got $it")
                             }
                         }
                     }
@@ -122,7 +140,13 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                     readChannel.onReceiveOrNull {
                         when (it) {
                             is HttpRequest -> {
-                                server.write(it)
+                                val handlerResponse = handler?.onClientRequest(it)
+                                if (handlerResponse != null) {
+                                    ReferenceCountUtil.release(it)
+                                    write(handlerResponse)
+                                } else {
+                                    server.write(it)
+                                }
                             }
                             null -> server.disconnect()
                             else -> TODO()
@@ -132,7 +156,15 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                     server.readChannel.onReceiveOrNull {
                         when (it) {
                             is HttpResponse -> {
-                                write(it)
+                                val handlerResponse = handler?.onServerResponse(it)
+                                if (handlerResponse != null) {
+                                    if (handlerResponse !== it) {
+                                        ReferenceCountUtil.release(it)
+                                    }
+                                    write(handlerResponse)
+                                } else {
+                                    write(it)
+                                }
                             }
                             null -> disconnect()
                             else -> TODO()
@@ -282,6 +314,16 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
         }
     }
 
+
+    suspend fun writeResponse(status: HttpResponseStatus,
+                              httpVersion: HttpVersion = HttpVersion.HTTP_1_1,
+                              contentType: String = "text/html; charset=utf-8",
+                              body: String? = null,
+                              block: (FullHttpResponse.() -> Unit)? = null) {
+        write(buildResponse(status, httpVersion, contentType, body, block))
+    }
+
+
     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) = runBlocking<Unit> {
         log("""
 $name -- got:
@@ -292,8 +334,6 @@ $msg
         readChannel.send(msg)
 
         log("$name -- processed message")
-
-        //ReferenceCountUtil.release(msg)
     }
 
 
