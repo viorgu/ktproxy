@@ -3,7 +3,6 @@ import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
 import io.netty.channel.*
-import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.http.*
 import kotlinx.coroutines.experimental.Job
@@ -11,15 +10,11 @@ import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
 import kotlinx.coroutines.experimental.selects.select
+import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
-
-
-object EventLoops {
-    val serverConnections = NioEventLoopGroup()
-}
 
 
 class ClientConnection(override val channel: Channel) : ChannelAdapter("client") {
@@ -36,26 +31,32 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
         job = launch(Unconfined) {
             while (channel.isActive) {
                 select<Unit> {
-                    receiveChannel.onReceiveOrNull {
+                    readChannel.onReceiveOrNull {
                         when (it) {
                             is HttpRequest -> {
+                                if (it.decoderResult().isFailure) {
+                                    write(buildResponse(HttpResponseStatus.BAD_REQUEST, body = "Unable to parse HTTP request") {
+                                        HttpUtil.setKeepAlive(this, false)
+                                    })
+                                    disconnect()
+                                }
+
                                 val hostAndPort = it.identifyHostAndPort()
 
                                 val server = findServerConnection(hostAndPort)
-                                server.write(it)
+                                server?.write(it)
                             }
-                            is ByteBuf -> {
-
-                            }
-                            null -> {
-
-                            }
+                            is HttpContent -> TODO()
+                            is ByteBuf -> TODO()
+                            null -> Unit
+                            else -> TODO("Got $it")
                         }
                     }
 
                     serverConnections.forEach { hostAndPort, server ->
-                        server.receiveChannel.onReceiveOrNull {
+                        server.readChannel.onReceiveOrNull {
                             if (it == null) {
+                                log("server disconnected $hostAndPort")
                                 serverConnections.remove(hostAndPort)
                             } else {
                                 write(it)
@@ -68,19 +69,54 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
 
         job?.invokeOnCompletion {
             log("client connection closed")
+            serverConnections.forEach { _, server ->
+                //server.disconnect()
+            }
         }
     }
 
+    suspend fun findServerConnection(hostAndPort: String): ServerConnection? {
+        var server = serverConnections[hostAndPort]
+
+        if (server != null) {
+            return server
+        } else {
+            log(hostAndPort)
+
+            val remoteAddress = HostAndPort.fromString(hostAndPort).withDefaultPort(80).let {
+                InetSocketAddress(InetAddress.getByName(it.host), it.port)
+            }
+
+            server = ServerConnection(remoteAddress)
+            try {
+                server.connect()
+            } catch (e: IOException) {
+                write(buildResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway"))
+                return null
+            }
+
+            serverConnections[hostAndPort] = server
+            return server
+        }
+    }
 
     fun startTunneling(remoteAddress: InetSocketAddress) {
         disableHttpPipeline(channel.pipeline())
         job = launch(Unconfined) {
             val server = ServerConnection(remoteAddress, tunnel = true)
-            server.connect()
+            try {
+                server.connect()
+            } catch (e: IOException) {
+                write(buildResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway") {
+                    HttpUtil.setKeepAlive(this, false)
+                })
+                disconnect()
+                return@launch
+            }
 
             while (channel.isActive) {
                 select<Unit> {
-                    receiveChannel.onReceiveOrNull {
+                    readChannel.onReceiveOrNull {
                         if (it == null) {
                             server.disconnect()
                         } else {
@@ -88,7 +124,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                         }
                     }
 
-                    server.receiveChannel.onReceiveOrNull {
+                    server.readChannel.onReceiveOrNull {
                         if (it == null) {
                             disconnect()
                         } else {
@@ -120,23 +156,6 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
         pipeline.remove("aggregator")
     }
 
-    suspend fun findServerConnection(hostAndPort: String): ServerConnection {
-        var server = serverConnections[hostAndPort]
-
-        if (server != null) {
-            return server
-        } else {
-            val remoteAddress = HostAndPort.fromString(hostAndPort).withDefaultPort(80).let {
-                InetSocketAddress(InetAddress.getByName(it.host), it.port)
-            }
-
-            server = ServerConnection(remoteAddress)
-            server.connect()
-            serverConnections[hostAndPort] = server
-            return server
-        }
-    }
-
     override fun channelInactive(ctx: ChannelHandlerContext) {
         super.channelInactive(ctx)
 
@@ -151,7 +170,7 @@ class ServerConnection(
 
     suspend fun connect() {
         val bootstrap = Bootstrap().apply {
-            group(EventLoops.serverConnections)
+            group(EventLoops.serverConnectionsGroup)
             channelFactory(ChannelFactory { NioSocketChannel() })
             //option(ChannelOption.CONNECT_TIMEOUT_MILLIS, proxyServer.connectTimeout)
         }
@@ -180,7 +199,7 @@ class ServerConnection(
 
 abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter() {
     abstract val channel: Channel
-    val receiveChannel = AsyncChannel<Any>()
+    val readChannel = AsyncChannel<Any>()
 
     suspend fun write(msg: Any, flush: Boolean = true) {
         if (flush) {
@@ -192,21 +211,26 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
 
     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) = runBlocking<Unit> {
         log("$name -- got $msg ${msg is HttpObject}")
-        receiveChannel.send(msg)
+        readChannel.send(msg)
         log("$name -- processed $msg")
         //ReferenceCountUtil.release(msg)
     }
 
 
     suspend fun disconnect() {
-        write(Unpooled.EMPTY_BUFFER, flush = true)
-        channel.disconnect().awaitComplete()
+        if(channel.isOpen) {
+            write(Unpooled.EMPTY_BUFFER, flush = true)
+            channel.disconnect().awaitComplete()
+        }
     }
 
 
     @Suppress("OverridingDeprecatedMember")
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         cause.printStackTrace()
+        runBlocking {
+            disconnect()
+        }
     }
 
     override fun channelWritabilityChanged(ctx: ChannelHandlerContext) {
@@ -223,7 +247,7 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
         log("$name -- channelInactive")
         super.channelInactive(ctx)
 
-        receiveChannel.close()
+        readChannel.close()
     }
 
     override fun channelReadComplete(ctx: ChannelHandlerContext) {
