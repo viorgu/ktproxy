@@ -16,10 +16,12 @@ import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
+import kproxy.connections.ClientConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.UnknownHostException
 import java.nio.charset.Charset
+
 
 object EventLoops {
     val bossGroup = NioEventLoopGroup()
@@ -53,7 +55,17 @@ class ProxyServer(val port: Int = 8088,
         launch(Unconfined) {
             val connection = ClientConnection(channel)
 
-            val initialRequest = connection.readChannel.receive() as HttpRequest
+            val initialRequest = connection.readChannel.receive() as? HttpRequest
+
+            if (initialRequest == null || initialRequest.decoderResult().isFailure) {
+                connection.writeResponse(HttpResponseStatus.BAD_GATEWAY,
+                        body = "Unable to parse response from server") {
+                    HttpUtil.setKeepAlive(this, false)
+                }
+                ReferenceCountUtil.release(initialRequest)
+                connection.disconnect()
+                return@launch
+            }
 
             val clientAddress = connection.channel.remoteAddress() as InetSocketAddress
 
@@ -112,7 +124,7 @@ class ProxyServer(val port: Int = 8088,
             }
 
             if (initialRequest.isConnect) {
-                val mitmManager = interceptor?.getMitmManager(initialRequest, userContext)
+                val mitmManager = interceptor?.mitm(initialRequest, userContext)
 
                 ReferenceCountUtil.release(initialRequest)
 
@@ -128,5 +140,4 @@ class ProxyServer(val port: Int = 8088,
             }
         }
     }
-
 }

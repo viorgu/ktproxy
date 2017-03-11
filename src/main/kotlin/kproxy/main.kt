@@ -12,7 +12,7 @@ import java.net.InetSocketAddress
 /*TODO:
 https://tools.ietf.org/html/rfc7230
 
-- Check connection healders
+- Check connection headers
 - Add via
 - Absolute vs origin-form URI
 
@@ -49,22 +49,22 @@ class Authenticator : ProxyAuthenticator {
 }
 
 class Interceptor(val mitmManager: MitmManager?) : RequestInterceptor {
-    override fun getMitmManager(request: HttpRequest, userContext: UserContext) = mitmManager
+    override fun mitm(request: HttpRequest, userContext: UserContext) = mitmManager
 
     override fun intercept(request: HttpRequest, userContext: UserContext) = Handler(userContext)
 }
 
 class Handler(val userContext: UserContext) : RequestHandler {
-    override fun onClientRequest(httpObject: HttpObject): HttpResponse? {
+    override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
         if(httpObject is FullHttpRequest) {
-            log("request from ${userContext.address} for ${httpObject.uri()}")
+            log("request from ${userContext.address} for ${httpObject.host}${httpObject.path}")
         }
 
         //return buildResponse(body = "Hello world")
         return null
     }
 
-    override fun onServerResponse(httpObject: HttpObject): HttpResponse? {
+    override fun handleServerResponse(httpObject: HttpObject): HttpResponse? {
         if(httpObject is FullHttpResponse) {
             return httpObject.apply {
                 headers().add("Hello", "World")

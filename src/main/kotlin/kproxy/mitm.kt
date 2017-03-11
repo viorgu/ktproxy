@@ -7,8 +7,6 @@ interface MitmManager {
 
     fun serverSslEngine(peerHost: String, peerPort: Int): SSLEngine
 
-    fun serverSslEngine(): SSLEngine
-
-    fun clientSslEngineFor(hostname: String, serverSslSession: SSLSession): SSLEngine
+    fun clientSslEngine(hostname: String, serverSslSession: SSLSession): SSLEngine
 
 }

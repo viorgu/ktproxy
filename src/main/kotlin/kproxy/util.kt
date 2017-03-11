@@ -11,21 +11,14 @@ import kotlin.coroutines.experimental.suspendCoroutine
 
 fun log(message: String) = println("${Thread.currentThread().name} -- $message")
 
-
-private val HTTP_PREFIX = Regex("^https?://.*", RegexOption.IGNORE_CASE)
+val HTTP_URL_MATCH = Regex("^(?:https?://)?([^/]*)(.*)$", RegexOption.IGNORE_CASE)
 
 val HttpRequest.isConnect
     get() = method() == HttpMethod.CONNECT
 
 val HttpRequest.hostAndPort: String
     get() {
-        val hostAndPort = if (!HTTP_PREFIX.matches(uri())) {
-            // Browsers particularly seem to send requests in this form when
-            // they use CONNECT.
-            uri()
-        } else {
-            uri().substringAfter("://")
-        }.substringBefore("/")
+        val hostAndPort = HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(1)
 
         return if (hostAndPort.isNullOrBlank()) {
             headers().getAll(HttpHeaderNames.HOST)?.firstOrNull().orEmpty()
@@ -33,6 +26,12 @@ val HttpRequest.hostAndPort: String
             hostAndPort.orEmpty()
         }
     }
+
+val HttpRequest.host: String
+    get() = hostAndPort.substringBefore(":")
+
+val HttpRequest.path: String
+    get() = HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(2).orEmpty()
 
 
 fun buildResponse(status: HttpResponseStatus = HttpResponseStatus.OK,

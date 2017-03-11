@@ -182,17 +182,6 @@ public class KProxyImpersonatingMitmManager implements MitmManager {
     }
 
     @Override
-    public SSLEngine serverSslEngine() {
-        try {
-            SSLEngine sslEngine = upstreamServerSslContext.get().newEngine(ByteBufAllocator.DEFAULT);
-
-            return sslEngine;
-        } catch (RuntimeException e) {
-            throw new MitmException("Error creating SSLEngine for connection to upstream server", e);
-        }
-    }
-
-    @Override
     public SSLEngine serverSslEngine(String peerHost, int peerPort) {
         try {
             SSLEngine sslEngine = upstreamServerSslContext.get().newEngine(ByteBufAllocator.DEFAULT, peerHost, peerPort);
@@ -209,7 +198,7 @@ public class KProxyImpersonatingMitmManager implements MitmManager {
     }
 
     @Override
-    public SSLEngine clientSslEngineFor(String requestedHostname, SSLSession sslSession) {
+    public SSLEngine clientSslEngine(String requestedHostname, SSLSession sslSession) {
         //String requestedHostname = HttpUtil.getHostFromRequest(httpRequest);
 
         try {
