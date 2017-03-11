@@ -12,6 +12,7 @@ import kotlinx.coroutines.experimental.Job
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
+import kotlinx.coroutines.experimental.selects.SelectBuilder
 import kotlinx.coroutines.experimental.selects.select
 import java.io.IOException
 import java.net.InetAddress
@@ -34,55 +35,58 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
 
     fun startReading() {
         job = launch(Unconfined) {
-            while (channel.isActive) {
-                select<Unit> {
-                    readChannel.onReceiveOrNull {
-                        when (it) {
-                            is HttpRequest -> {
-                                if (it.decoderResult().isFailure) {
-                                    write(buildResponse(HttpResponseStatus.BAD_REQUEST, body = "Unable to parse HTTP request") {
-                                        HttpUtil.setKeepAlive(this, false)
-                                    })
-                                    disconnect()
-                                }
 
-                                val handlerResponse = handler?.onClientRequest(it)
-                                if (handlerResponse != null) {
+            var currentServerConnection: ServerConnection? = null
+
+            selectWhileActive {
+
+                serverConnections.values.removeIf { it.readChannel.isClosedForReceive }
+
+                currentServerConnection?.readChannel?.onReceiveOrNull {
+                    when (it) {
+                        is HttpResponse -> {
+                            val handlerResponse = handler?.onServerResponse(it)
+                            if (handlerResponse != null) {
+                                if (handlerResponse !== it) {
                                     ReferenceCountUtil.release(it)
-                                    write(handlerResponse)
-                                } else {
-                                    val server = findServerConnection(it.hostAndPort)
-                                    server?.write(it)
                                 }
-                            }
-                            null -> Unit
-                            else -> TODO("Got $it")
-                        }
-                    }
-
-                    serverConnections.forEach { hostAndPort, server ->
-                        server.readChannel.onReceiveOrNull {
-                            when (it) {
-                                is HttpResponse -> {
-                                    val handlerResponse = handler?.onServerResponse(it)
-                                    if (handlerResponse != null) {
-                                        if (handlerResponse !== it) {
-                                            ReferenceCountUtil.release(it)
-                                        }
-                                        write(handlerResponse)
-                                    } else {
-                                        write(it)
-                                    }
-                                }
-                                null -> {
-                                    log("server disconnected $hostAndPort")
-                                    serverConnections.remove(hostAndPort)
-                                }
-                                else -> TODO("Got $it")
+                                write(handlerResponse)
+                            } else {
+                                write(it)
                             }
                         }
+                        null -> {
+                            log("server disconnected ${currentServerConnection?.remoteAddress}")
+                            currentServerConnection = null
+                        }
+                        else -> TODO("Got $it")
                     }
                 }
+
+                readChannel.onReceiveOrNull {
+                    when (it) {
+                        is HttpRequest -> {
+                            if (it.decoderResult().isFailure) {
+                                write(buildResponse(HttpResponseStatus.BAD_REQUEST, body = "Unable to parse HTTP request") {
+                                    HttpUtil.setKeepAlive(this, false)
+                                })
+                                disconnect()
+                            }
+
+                            val handlerResponse = handler?.onClientRequest(it)
+                            if (handlerResponse != null) {
+                                ReferenceCountUtil.release(it)
+                                write(handlerResponse)
+                            } else {
+                                currentServerConnection = findServerConnection(it.hostAndPort)
+                                currentServerConnection?.write(it)
+                            }
+                        }
+                        null -> Unit
+                        else -> TODO("Got $it")
+                    }
+                }
+                
             }
         }
 
@@ -135,42 +139,42 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
             val sslEngineClient = mitmManager.clientSslEngineFor(remoteAddress.hostName, sslEngineServer.session)
             encryptChannel(channel.pipeline(), sslEngineClient)
 
-            while (channel.isActive) {
-                select<Unit> {
-                    readChannel.onReceiveOrNull {
-                        when (it) {
-                            is HttpRequest -> {
-                                val handlerResponse = handler?.onClientRequest(it)
-                                if (handlerResponse != null) {
-                                    ReferenceCountUtil.release(it)
-                                    write(handlerResponse)
-                                } else {
-                                    server.write(it)
-                                }
-                            }
-                            null -> server.disconnect()
-                            else -> TODO()
-                        }
-                    }
+            selectWhileActive {
 
-                    server.readChannel.onReceiveOrNull {
-                        when (it) {
-                            is HttpResponse -> {
-                                val handlerResponse = handler?.onServerResponse(it)
-                                if (handlerResponse != null) {
-                                    if (handlerResponse !== it) {
-                                        ReferenceCountUtil.release(it)
-                                    }
-                                    write(handlerResponse)
-                                } else {
-                                    write(it)
+                server.readChannel.onReceiveOrNull {
+                    when (it) {
+                        is HttpResponse -> {
+                            val handlerResponse = handler?.onServerResponse(it)
+                            if (handlerResponse != null) {
+                                if (handlerResponse !== it) {
+                                    ReferenceCountUtil.release(it)
                                 }
+                                write(handlerResponse)
+                            } else {
+                                write(it)
                             }
-                            null -> disconnect()
-                            else -> TODO()
                         }
+                        null -> disconnect()
+                        else -> TODO()
                     }
                 }
+
+                readChannel.onReceiveOrNull {
+                    when (it) {
+                        is HttpRequest -> {
+                            val handlerResponse = handler?.onClientRequest(it)
+                            if (handlerResponse != null) {
+                                ReferenceCountUtil.release(it)
+                                write(handlerResponse)
+                            } else {
+                                server.write(it)
+                            }
+                        }
+                        null -> server.disconnect()
+                        else -> TODO()
+                    }
+                }
+
             }
         }
 
@@ -205,24 +209,24 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 return@launch
             }
 
-            while (channel.isActive) {
-                select<Unit> {
-                    readChannel.onReceiveOrNull {
-                        if (it == null) {
-                            server.disconnect()
-                        } else {
-                            server.write(it)
-                        }
-                    }
+            selectWhileActive {
 
-                    server.readChannel.onReceiveOrNull {
-                        if (it == null) {
-                            disconnect()
-                        } else {
-                            write(it)
-                        }
+                server.readChannel.onReceiveOrNull {
+                    if (it == null) {
+                        disconnect()
+                    } else {
+                        write(it)
                     }
                 }
+
+                readChannel.onReceiveOrNull {
+                    if (it == null) {
+                        server.disconnect()
+                    } else {
+                        server.write(it)
+                    }
+                }
+
             }
         }
 
@@ -323,6 +327,12 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
         write(buildResponse(status, httpVersion, contentType, body, block))
     }
 
+
+    suspend fun selectWhileActive(builder: SelectBuilder<Unit>.() -> Unit) {
+        while (channel.isActive) {
+            select(builder)
+        }
+    }
 
     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) = runBlocking<Unit> {
         log("""
