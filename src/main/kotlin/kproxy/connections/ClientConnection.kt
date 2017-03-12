@@ -10,7 +10,11 @@ import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Job
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
-import kproxy.*
+import kproxy.MitmManager
+import kproxy.RequestHandler
+import kproxy.log
+import kproxy.util.awaitComplete
+import kproxy.util.hostAndPort
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -113,7 +117,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
             try {
                 server.connect()
             } catch (e: IOException) {
-                write(buildResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway"))
+                writeResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway")
                 return null
             }
 
@@ -131,7 +135,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
             try {
                 server.connect()
             } catch (e: IOException) {
-                write(buildResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway"))
+                writeResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway")
                 return@launch
             }
 

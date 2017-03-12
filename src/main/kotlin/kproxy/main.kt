@@ -2,6 +2,8 @@ package kproxy
 
 import io.netty.handler.codec.http.*
 import kotlinx.coroutines.experimental.runBlocking
+import kproxy.util.host
+import kproxy.util.path
 import net.lightbody.bmp.mitm.KeyStoreFileCertificateSource
 import net.lightbody.bmp.mitm.RootCertificateGenerator
 import net.lightbody.bmp.mitm.manager.KProxyImpersonatingMitmManager
@@ -15,7 +17,7 @@ https://tools.ietf.org/html/rfc7230
 - Check connection headers
 - Add via
 - Absolute vs origin-form URI
-
+- Messages left in channels
 
  */
 

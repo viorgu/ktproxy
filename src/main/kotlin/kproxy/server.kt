@@ -17,6 +17,9 @@ import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
 import kproxy.connections.ClientConnection
+import kproxy.util.awaitChannel
+import kproxy.util.hostAndPort
+import kproxy.util.isConnect
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.UnknownHostException

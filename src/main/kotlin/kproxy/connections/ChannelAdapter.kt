@@ -7,14 +7,15 @@ import io.netty.channel.ChannelInboundHandlerAdapter
 import io.netty.handler.codec.http.FullHttpResponse
 import io.netty.handler.codec.http.HttpResponseStatus
 import io.netty.handler.codec.http.HttpVersion
+import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
 import kotlinx.coroutines.experimental.selects.SelectBuilder
 import kotlinx.coroutines.experimental.selects.select
-import kproxy.awaitComplete
-import kproxy.buildResponse
 import kproxy.log
+import kproxy.util.awaitComplete
+import kproxy.util.buildResponse
 import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 
 
@@ -83,6 +84,8 @@ $msg
     override fun channelInactive(ctx: ChannelHandlerContext) {
         log("$name -- channelInactive")
         super.channelInactive(ctx)
+
+        readChannel.poll()?.let { ReferenceCountUtil.release(it) }
 
         readChannel.close()
     }

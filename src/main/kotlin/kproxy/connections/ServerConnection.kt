@@ -12,8 +12,8 @@ import io.netty.handler.codec.http.HttpRequestEncoder
 import io.netty.handler.codec.http.HttpResponseDecoder
 import io.netty.handler.ssl.SslHandler
 import kproxy.EventLoops
-import kproxy.awaitChannel
-import kproxy.awaitComplete
+import kproxy.util.awaitChannel
+import kproxy.util.awaitComplete
 import java.net.InetSocketAddress
 import javax.net.ssl.SSLEngine
 
