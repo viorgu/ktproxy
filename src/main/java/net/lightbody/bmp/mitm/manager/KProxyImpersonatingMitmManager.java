@@ -10,7 +10,7 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SupportedCipherSuiteFilter;
-import kproxy.MitmManager;
+import kproxy.SslEngineSource;
 import net.lightbody.bmp.mitm.*;
 import net.lightbody.bmp.mitm.exception.MitmException;
 import net.lightbody.bmp.mitm.exception.SslContextInitializationException;
@@ -41,11 +41,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /**
- * An {@link MitmManager} that will create SSLEngines for clients that present impersonated certificates for upstream servers. The impersonated
+ * An {@link SslEngineSource} that will create SSLEngines for clients that present impersonated certificates for upstream servers. The impersonated
  * certificates will be signed using the certificate and private key specified in an {@link #rootCertificateSource}. The impersonated server
  * certificates will be created by the {@link #securityProviderTool} based on the {@link CertificateInfo} returned by the {@link #certificateInfoGenerator}.
  */
-public class KProxyImpersonatingMitmManager implements MitmManager {
+public class KProxyImpersonatingMitmManager implements SslEngineSource {
     private static final Logger log = LoggerFactory.getLogger(KProxyImpersonatingMitmManager.class);
 
     /**

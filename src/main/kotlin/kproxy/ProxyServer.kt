@@ -18,8 +18,9 @@ import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
 import kproxy.connections.ClientConnection
 import kproxy.util.awaitChannel
-import kproxy.util.hostAndPort
+import kproxy.util.host
 import kproxy.util.isConnect
+import kproxy.util.log
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.UnknownHostException
@@ -34,7 +35,7 @@ object EventLoops {
 
 class ProxyServer(val port: Int = 8088,
                   val authenticator: ProxyAuthenticator? = null,
-                  val interceptor: RequestInterceptor? = null) {
+                  val connectionHandler: ConnectionHandler? = null) {
 
     fun start() {
         runBlocking {
@@ -66,11 +67,13 @@ class ProxyServer(val port: Int = 8088,
                     HttpUtil.setKeepAlive(this, false)
                 }
                 ReferenceCountUtil.release(initialRequest)
-                connection.disconnect()
+                connection.disconnectAsync()
                 return@launch
             }
 
             val clientAddress = connection.channel.remoteAddress() as InetSocketAddress
+
+            log("New connection from $clientAddress for ${initialRequest.uri()}")
 
             val userContext = if (authenticator != null) {
                 if (!initialRequest.headers().contains(HttpHeaderNames.PROXY_AUTHORIZATION)) {
@@ -95,7 +98,7 @@ class ProxyServer(val port: Int = 8088,
                     }
                 }
             } else {
-                AnonymousUserContext(clientAddress)
+                UserContext(clientAddress)
             }
 
             if (userContext == null) {
@@ -105,15 +108,15 @@ class ProxyServer(val port: Int = 8088,
                 }
 
                 ReferenceCountUtil.release(initialRequest)
-                connection.disconnect()
+                connection.disconnectAsync()
                 return@launch
             }
 
-            val requestHandler = interceptor?.intercept(initialRequest, userContext)
-            connection.handler = requestHandler
+            val interceptor = connectionHandler?.intercept(initialRequest, userContext)
+            connection.interceptor = interceptor
 
             val remoteAddress = try {
-                HostAndPort.fromString(initialRequest.hostAndPort).withDefaultPort(80).let {
+                HostAndPort.fromString(initialRequest.host).withDefaultPort(80).let {
                     InetSocketAddress(InetAddress.getByName(it.host), it.port)
                 }
             } catch (e: UnknownHostException) {
@@ -122,12 +125,12 @@ class ProxyServer(val port: Int = 8088,
                 }
 
                 ReferenceCountUtil.release(initialRequest)
-                connection.disconnect()
+                connection.disconnectAsync()
                 return@launch
             }
 
             if (initialRequest.isConnect) {
-                val mitmManager = interceptor?.mitm(initialRequest, userContext)
+                val mitmManager = connectionHandler?.mitm(initialRequest, userContext)
 
                 ReferenceCountUtil.release(initialRequest)
 

@@ -9,6 +9,6 @@ suspend fun ChannelFuture.awaitChannel(): Channel = suspendCoroutine { c ->
     addListener { future -> if (future.isSuccess) c.resume(channel()) else c.resumeWithException(future.cause()) }
 }
 
-suspend fun Future<*>.awaitComplete(): Unit = suspendCoroutine { c ->
+suspend fun Future<*>.join(): Unit = suspendCoroutine { c ->
     addListener { future -> if (future.isSuccess) c.resume(Unit) else c.resumeWithException(future.cause()) }
 }

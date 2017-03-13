@@ -10,11 +10,11 @@ import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Job
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
-import kproxy.MitmManager
-import kproxy.RequestHandler
-import kproxy.log
-import kproxy.util.awaitComplete
-import kproxy.util.hostAndPort
+import kproxy.SslEngineSource
+import kproxy.RequestInterceptor
+import kproxy.util.log
+import kproxy.util.join
+import kproxy.util.host
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -25,7 +25,7 @@ import javax.net.ssl.SSLEngine
 class ClientConnection(override val channel: Channel) : ChannelAdapter("client") {
 
     var job: Job? = null
-    var handler: RequestHandler? = null
+    var interceptor: RequestInterceptor? = null
     val serverConnections = ConcurrentHashMap<String, ServerConnection>()
 
     init {
@@ -45,7 +45,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 currentServerConnection?.readChannel?.onReceiveOrNull {
                     when (it) {
                         is HttpResponse -> {
-                            val handlerResponse = handler?.handleServerResponse(it)
+                            val handlerResponse = interceptor?.handleServerResponse(it)
                             if (handlerResponse != null) {
                                 if (handlerResponse !== it) {
                                     ReferenceCountUtil.release(it)
@@ -72,16 +72,16 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                                     HttpUtil.setKeepAlive(this, false)
                                 }
                                 ReferenceCountUtil.release(it)
-                                disconnect().join()
+                                disconnectAsync().join()
                                 return@onReceiveOrNull
                             }
 
-                            val handlerResponse = handler?.handleClientRequest(it)
+                            val handlerResponse = interceptor?.handleClientRequest(it)
                             if (handlerResponse != null) {
                                 ReferenceCountUtil.release(it)
                                 write(handlerResponse)
                             } else {
-                                currentServerConnection = findServerConnection(it.hostAndPort)
+                                currentServerConnection = findServerConnection(it.host)
                                 currentServerConnection?.write(it)
                             }
                         }
@@ -96,20 +96,22 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
         job?.invokeOnCompletion {
             log("client connection closed")
             serverConnections.forEach { _, server ->
-                server.disconnect()
+                server.disconnectAsync()
             }
         }
     }
 
-    suspend fun findServerConnection(hostAndPort: String): ServerConnection? {
-        var server = serverConnections[hostAndPort]
+    suspend fun findServerConnection(host: String): ServerConnection? {
+        var server = serverConnections[host]
 
         if (server != null) {
+            log("Reusing connection $host")
+
             return server
         } else {
-            log("Connecting to $hostAndPort")
+            log("Connecting to $host")
 
-            val remoteAddress = HostAndPort.fromString(hostAndPort).withDefaultPort(80).let {
+            val remoteAddress = HostAndPort.fromString(host).withDefaultPort(80).let {
                 InetSocketAddress(InetAddress.getByName(it.host), it.port)
             }
 
@@ -121,16 +123,16 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 return null
             }
 
-            serverConnections[hostAndPort] = server
+            serverConnections[host] = server
             return server
         }
     }
 
-    fun startMitm(remoteAddress: InetSocketAddress, mitmManager: MitmManager) {
+    fun startMitm(remoteAddress: InetSocketAddress, sslEngineSource: SslEngineSource) {
         channel.config().isAutoRead = false
 
         job = launch(Unconfined) {
-            val sslEngineServer = mitmManager.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
+            val sslEngineServer = sslEngineSource.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
             val server = ServerConnection(remoteAddress, sslEngine = sslEngineServer)
             try {
                 server.connect()
@@ -139,7 +141,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 return@launch
             }
 
-            val sslEngineClient = mitmManager.clientSslEngine(remoteAddress.hostName, sslEngineServer.session)
+            val sslEngineClient = sslEngineSource.clientSslEngine(remoteAddress.hostName, sslEngineServer.session)
             encryptChannel(channel.pipeline(), sslEngineClient)
 
             selectWhileActive {
@@ -147,7 +149,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 server.readChannel.onReceiveOrNull {
                     when (it) {
                         is HttpResponse -> {
-                            val handlerResponse = handler?.handleServerResponse(it)
+                            val handlerResponse = interceptor?.handleServerResponse(it)
                             if (handlerResponse != null) {
                                 if (handlerResponse !== it) {
                                     ReferenceCountUtil.release(it)
@@ -157,7 +159,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                                 write(it)
                             }
                         }
-                        null -> disconnect().join()
+                        null -> disconnectAsync().join()
                         else -> TODO()
                     }
                 }
@@ -165,7 +167,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 readChannel.onReceiveOrNull {
                     when (it) {
                         is HttpRequest -> {
-                            val handlerResponse = handler?.handleClientRequest(it)
+                            val handlerResponse = interceptor?.handleClientRequest(it)
                             if (handlerResponse != null) {
                                 ReferenceCountUtil.release(it)
                                 write(handlerResponse)
@@ -173,7 +175,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                                 server.write(it)
                             }
                         }
-                        null -> server.disconnect().join()
+                        null -> server.disconnectAsync().join()
                         else -> TODO()
                     }
                 }
@@ -195,7 +197,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
 
         channel.config().isAutoRead = true
 
-        handler.handshakeFuture().awaitComplete()
+        handler.handshakeFuture().join()
     }
 
     fun startTunneling(remoteAddress: InetSocketAddress) {
@@ -208,7 +210,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 writeResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway") {
                     HttpUtil.setKeepAlive(this, false)
                 }
-                disconnect()
+                disconnectAsync()
                 return@launch
             }
 
@@ -216,7 +218,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
 
                 server.readChannel.onReceiveOrNull {
                     if (it == null) {
-                        disconnect().join()
+                        disconnectAsync().join()
                     } else {
                         write(it)
                     }
@@ -224,7 +226,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
 
                 readChannel.onReceiveOrNull {
                     if (it == null) {
-                        server.disconnect()
+                        server.disconnectAsync()
                     } else {
                         server.write(it)
                     }
@@ -243,7 +245,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
         pipeline.addLast("decoder", HttpRequestDecoder(8192, 8192 * 2, 8192 * 2))
 
         pipeline.addLast("inflater", HttpContentDecompressor())
-        pipeline.addLast("aggregator", HttpObjectAggregator(10 * 1024 * 1024))
+        pipeline.addLast("aggregator", HttpObjectAggregator(50 * 1024 * 1024))
     }
 
     private fun disableHttpDecoding(pipeline: ChannelPipeline) {

@@ -2,7 +2,8 @@ package kproxy
 
 import io.netty.handler.codec.http.*
 import kotlinx.coroutines.experimental.runBlocking
-import kproxy.util.host
+import kproxy.util.hostname
+import kproxy.util.log
 import kproxy.util.path
 import net.lightbody.bmp.mitm.KeyStoreFileCertificateSource
 import net.lightbody.bmp.mitm.RootCertificateGenerator
@@ -41,7 +42,7 @@ fun main(args: Array<String>) = runBlocking {
 
     ProxyServer(
             //authenticator = Authenticator(),
-            interceptor = Interceptor(mitmManager)).start()
+            connectionHandler = Interceptor(mitmManager)).start()
 }
 
 class Authenticator : ProxyAuthenticator {
@@ -50,16 +51,16 @@ class Authenticator : ProxyAuthenticator {
     }
 }
 
-class Interceptor(val mitmManager: MitmManager?) : RequestInterceptor {
-    override fun mitm(request: HttpRequest, userContext: UserContext) = mitmManager
+class Interceptor(val sslEngineSource: SslEngineSource?) : ConnectionHandler {
+    override fun mitm(initialRequest: HttpRequest, userContext: UserContext) = sslEngineSource
 
-    override fun intercept(request: HttpRequest, userContext: UserContext) = Handler(userContext)
+    override fun intercept(initialRequest: HttpRequest, userContext: UserContext) = Handler(userContext)
 }
 
-class Handler(val userContext: UserContext) : RequestHandler {
+class Handler(val userContext: UserContext) : RequestInterceptor {
     override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
         if(httpObject is FullHttpRequest) {
-            log("request from ${userContext.address} for ${httpObject.host}${httpObject.path}")
+            log("request from ${userContext.address} for ${httpObject.hostname}${httpObject.path}")
         }
 
         //return buildResponse(body = "Hello world")

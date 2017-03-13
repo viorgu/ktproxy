@@ -13,7 +13,7 @@ import io.netty.handler.codec.http.HttpResponseDecoder
 import io.netty.handler.ssl.SslHandler
 import kproxy.EventLoops
 import kproxy.util.awaitChannel
-import kproxy.util.awaitComplete
+import kproxy.util.join
 import java.net.InetSocketAddress
 import javax.net.ssl.SSLEngine
 
@@ -50,7 +50,7 @@ class ServerConnection(
             pipeline.addLast("decoder", HttpResponseDecoder(8192, 8192 * 2, 8192 * 2))
 
             pipeline.addLast("inflater", HttpContentDecompressor())
-            pipeline.addLast("aggregator", HttpObjectAggregator(10 * 1024 * 1024))
+            pipeline.addLast("aggregator", HttpObjectAggregator(50 * 1024 * 1024))
         }
 
         pipeline.addLast("handler", this)
@@ -63,6 +63,6 @@ class ServerConnection(
         val handler = SslHandler(sslEngine)
         pipeline.addFirst("ssl", handler)
 
-        handler.handshakeFuture().awaitComplete()
+        handler.handshakeFuture().join()
     }
 }

@@ -10,12 +10,11 @@ import io.netty.handler.codec.http.HttpVersion
 import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
-import kotlinx.coroutines.experimental.runBlocking
 import kotlinx.coroutines.experimental.selects.SelectBuilder
 import kotlinx.coroutines.experimental.selects.select
-import kproxy.log
-import kproxy.util.awaitComplete
+import kproxy.util.log
 import kproxy.util.buildResponse
+import kproxy.util.join
 import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 
 
@@ -26,9 +25,9 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
 
     suspend fun write(msg: Any, flush: Boolean = true) {
         if (flush) {
-            channel.writeAndFlush(msg).awaitComplete()
+            channel.writeAndFlush(msg).join()
         } else {
-            channel.write(msg).awaitComplete()
+            channel.write(msg).join()
         }
     }
 
@@ -46,29 +45,31 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
         }
     }
 
-    override fun channelRead(ctx: ChannelHandlerContext, msg: Any) = runBlocking<Unit> {
-        log("""
-$name -- got:
----------------
-$msg
----------------""")
+    override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
+        launch(Unconfined) {
+//        log("""
+//$name -- got:
+//---------------
+//$msg
+//---------------""")
 
-        readChannel.send(msg)
+            readChannel.send(msg)
 
-        log("$name -- processed message")
+            //log("$name -- processed message")
+        }
     }
 
-    fun disconnect() = launch(Unconfined) {
+    fun disconnectAsync() = launch(Unconfined) {
         if (channel.isOpen) {
             write(Unpooled.EMPTY_BUFFER, flush = true)
-            channel.disconnect().awaitComplete()
+            channel.disconnect().join()
         }
     }
 
     @Suppress("OverridingDeprecatedMember")
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         cause.printStackTrace()
-        disconnect()
+        disconnectAsync()
     }
 
     override fun channelWritabilityChanged(ctx: ChannelHandlerContext) {

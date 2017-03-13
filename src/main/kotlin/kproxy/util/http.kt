@@ -10,7 +10,7 @@ val HTTP_URL_MATCH = Regex("^(?:https?://)?([^/]*)(.*)$", RegexOption.IGNORE_CAS
 val HttpRequest.isConnect
     get() = method() == HttpMethod.CONNECT
 
-val HttpRequest.hostAndPort: String
+val HttpRequest.host: String
     get() {
         val hostAndPort = HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(1)
 
@@ -21,8 +21,8 @@ val HttpRequest.hostAndPort: String
         }
     }
 
-val HttpRequest.host: String
-    get() = hostAndPort.substringBefore(":")
+val HttpRequest.hostname: String
+    get() = host.substringBefore(":")
 
 val HttpRequest.path: String
     get() = HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(2).orEmpty()
