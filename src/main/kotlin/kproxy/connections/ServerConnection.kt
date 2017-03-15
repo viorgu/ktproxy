@@ -19,9 +19,11 @@ import javax.net.ssl.SSLEngine
 
 
 class ServerConnection(
+        clientId: Int,
+        id: Int,
         val remoteAddress: InetSocketAddress,
         val sslEngine: SSLEngine? = null,
-        val tunnel: Boolean = false) : ChannelAdapter("server") {
+        val tunnel: Boolean = false) : ChannelAdapter("server-$clientId-$id(${remoteAddress.hostName})") {
 
     override lateinit var channel: Channel
 

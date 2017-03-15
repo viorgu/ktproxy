@@ -13,6 +13,7 @@ import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpResponseStatus
 import io.netty.handler.codec.http.HttpUtil
 import io.netty.util.ReferenceCountUtil
+import io.netty.util.ResourceLeakDetector
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
@@ -25,6 +26,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.UnknownHostException
 import java.nio.charset.Charset
+import java.util.concurrent.atomic.AtomicInteger
 
 
 object EventLoops {
@@ -37,8 +39,14 @@ class ProxyServer(val port: Int = 8088,
                   val authenticator: ProxyAuthenticator? = null,
                   val connectionHandler: ConnectionHandler? = null) {
 
+    val activeClients = mutableListOf<ClientConnection>()
+
+    val nextConnectionId = AtomicInteger()
+
     fun start() {
         runBlocking {
+            ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.PARANOID)
+
             val server = ServerBootstrap().apply {
                 group(EventLoops.bossGroup, EventLoops.workerGroup)
                 channelFactory(ChannelFactory { NioServerSocketChannel() })
@@ -57,7 +65,10 @@ class ProxyServer(val port: Int = 8088,
 
     private fun handleIncomingConnection(channel: Channel) {
         launch(Unconfined) {
-            val connection = ClientConnection(channel)
+
+            val clientId = nextConnectionId.getAndIncrement()
+
+            val connection = ClientConnection(clientId, channel)
 
             val initialRequest = connection.readChannel.receive() as? HttpRequest
 
@@ -73,7 +84,8 @@ class ProxyServer(val port: Int = 8088,
 
             val clientAddress = connection.channel.remoteAddress() as InetSocketAddress
 
-            log("New connection from $clientAddress for ${initialRequest.uri()}")
+            log("Active connections: ${activeClients.size} -- ${activeClients.joinToString { it.name }}")
+            log("[$clientId] New connection from $clientAddress for ${initialRequest.uri()}")
 
             val userContext = if (authenticator != null) {
                 if (!initialRequest.headers().contains(HttpHeaderNames.PROXY_AUTHORIZATION)) {
@@ -143,6 +155,11 @@ class ProxyServer(val port: Int = 8088,
             } else {
                 connection.startReading()
                 connection.readChannel.send(initialRequest)
+            }
+
+            activeClients += connection
+            connection.job.invokeOnCompletion {
+                activeClients -= connection
             }
         }
     }

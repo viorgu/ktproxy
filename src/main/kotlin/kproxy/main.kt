@@ -59,7 +59,7 @@ class Interceptor(val sslEngineSource: SslEngineSource?) : ConnectionHandler {
 
 class Handler(val userContext: UserContext) : RequestInterceptor {
     override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
-        if(httpObject is FullHttpRequest) {
+        if (httpObject is FullHttpRequest) {
             log("request from ${userContext.address} for ${httpObject.hostname}${httpObject.path}")
         }
 
@@ -68,7 +68,7 @@ class Handler(val userContext: UserContext) : RequestInterceptor {
     }
 
     override fun handleServerResponse(httpObject: HttpObject): HttpResponse? {
-        if(httpObject is FullHttpResponse) {
+        if (httpObject is FullHttpResponse) {
             return httpObject.apply {
                 headers().add("Hello", "World")
             }

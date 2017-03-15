@@ -2,40 +2,57 @@ package kproxy.connections
 
 import com.google.common.net.HostAndPort
 import io.netty.channel.Channel
-import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelPipeline
 import io.netty.handler.codec.http.*
 import io.netty.handler.ssl.SslHandler
 import io.netty.util.ReferenceCountUtil
-import kotlinx.coroutines.experimental.Job
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
-import kproxy.SslEngineSource
 import kproxy.RequestInterceptor
-import kproxy.util.log
-import kproxy.util.join
+import kproxy.SslEngineSource
 import kproxy.util.host
+import kproxy.util.join
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.SSLEngine
 
 
-class ClientConnection(override val channel: Channel) : ChannelAdapter("client") {
+enum class ConnectionType {
+    UNKNOWN, DEFAULT, MITM, TUNNEL
+}
 
-    var job: Job? = null
+
+class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdapter("client-$id") {
+
+    var type = ConnectionType.UNKNOWN
+        private set
+
     var interceptor: RequestInterceptor? = null
     val serverConnections = ConcurrentHashMap<String, ServerConnection>()
+
+    val nextServerId = AtomicInteger()
 
     init {
         enableHttpDecoding(channel.pipeline())
         channel.pipeline().addLast("handler", this)
+
+        job.invokeOnCompletion {
+            log("client connection closed")
+
+            serverConnections.forEach {
+                log("disconnecting from ${it.key} [connected: ${it.value.isConnected}]")
+                it.value.disconnectAsync()
+            }
+        }
     }
 
     fun startReading() {
-        job = launch(Unconfined) {
+        type = ConnectionType.DEFAULT
 
+        launch(job + Unconfined) {
             var currentServerConnection: ServerConnection? = null
 
             selectWhileActive {
@@ -89,14 +106,6 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                         else -> TODO("Got $it")
                     }
                 }
-
-            }
-        }
-
-        job?.invokeOnCompletion {
-            log("client connection closed")
-            serverConnections.forEach { _, server ->
-                server.disconnectAsync()
             }
         }
     }
@@ -115,7 +124,7 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 InetSocketAddress(InetAddress.getByName(it.host), it.port)
             }
 
-            server = ServerConnection(remoteAddress)
+            server = ServerConnection(id, nextServerId.getAndIncrement(), remoteAddress)
             try {
                 server.connect()
             } catch (e: IOException) {
@@ -129,11 +138,15 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
     }
 
     fun startMitm(remoteAddress: InetSocketAddress, sslEngineSource: SslEngineSource) {
+        type = ConnectionType.MITM
+
         channel.config().isAutoRead = false
 
-        job = launch(Unconfined) {
-            val sslEngineServer = sslEngineSource.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
-            val server = ServerConnection(remoteAddress, sslEngine = sslEngineServer)
+        val sslEngineServer = sslEngineSource.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
+        val server = ServerConnection(id, nextServerId.getAndIncrement(), remoteAddress, sslEngine = sslEngineServer)
+        serverConnections[remoteAddress.hostName] = server
+
+        launch(job + Unconfined) {
             try {
                 server.connect()
             } catch (e: IOException) {
@@ -175,16 +188,12 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                                 server.write(it)
                             }
                         }
-                        null -> server.disconnectAsync().join()
+                        null -> Unit
                         else -> TODO()
                     }
                 }
 
             }
-        }
-
-        job?.invokeOnCompletion {
-            log("client-mitm connection closed")
         }
     }
 
@@ -201,9 +210,14 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
     }
 
     fun startTunneling(remoteAddress: InetSocketAddress) {
+        type = ConnectionType.TUNNEL
+
         disableHttpDecoding(channel.pipeline())
-        job = launch(Unconfined) {
-            val server = ServerConnection(remoteAddress, tunnel = true)
+
+        val server = ServerConnection(id, nextServerId.getAndIncrement(), remoteAddress, tunnel = true)
+        serverConnections[remoteAddress.hostName] = server
+
+        launch(job + Unconfined) {
             try {
                 server.connect()
             } catch (e: IOException) {
@@ -225,18 +239,11 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
                 }
 
                 readChannel.onReceiveOrNull {
-                    if (it == null) {
-                        server.disconnectAsync()
-                    } else {
+                    if (it != null) {
                         server.write(it)
                     }
                 }
-
             }
-        }
-
-        job?.invokeOnCompletion {
-            log("client-tunnel connection closed")
         }
     }
 
@@ -254,11 +261,5 @@ class ClientConnection(override val channel: Channel) : ChannelAdapter("client")
 
         pipeline.remove("inflater")
         pipeline.remove("aggregator")
-    }
-
-    override fun channelInactive(ctx: ChannelHandlerContext) {
-        super.channelInactive(ctx)
-
-        job?.cancel()
     }
 }

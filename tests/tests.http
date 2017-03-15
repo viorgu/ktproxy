@@ -1,0 +1,13 @@
+GET http://nexcore.net/test.html
+Connection: keep-alive
+Proxy-Authorization: Basic asds
+
+###
+
+GET https://google.com/
+Connection: keep-alive
+
+###
+
+GET https://api.github.com 
+Connection: keep-alive
