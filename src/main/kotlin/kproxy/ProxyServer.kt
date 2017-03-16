@@ -11,21 +11,18 @@ import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.handler.codec.http.HttpHeaderNames
 import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpResponseStatus
-import io.netty.handler.codec.http.HttpUtil
 import io.netty.util.ReferenceCountUtil
 import io.netty.util.ResourceLeakDetector
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
 import kproxy.connections.ClientConnection
-import kproxy.util.awaitChannel
-import kproxy.util.host
-import kproxy.util.isConnect
-import kproxy.util.log
+import kproxy.util.*
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.UnknownHostException
 import java.nio.charset.Charset
+import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 
 
@@ -39,7 +36,7 @@ class ProxyServer(val port: Int = 8088,
                   val authenticator: ProxyAuthenticator? = null,
                   val connectionHandler: ConnectionHandler? = null) {
 
-    val activeClients = mutableListOf<ClientConnection>()
+    val activeClients: MutableList<ClientConnection> = Collections.synchronizedList(mutableListOf())
 
     val nextConnectionId = AtomicInteger()
 
@@ -75,7 +72,7 @@ class ProxyServer(val port: Int = 8088,
             if (initialRequest == null || initialRequest.decoderResult().isFailure) {
                 connection.writeResponse(HttpResponseStatus.BAD_GATEWAY,
                         body = "Unable to parse response from server") {
-                    HttpUtil.setKeepAlive(this, false)
+                    isKeepAlive = false
                 }
                 ReferenceCountUtil.release(initialRequest)
                 connection.disconnectAsync()
@@ -125,6 +122,9 @@ class ProxyServer(val port: Int = 8088,
             }
 
             val interceptor = connectionHandler?.intercept(initialRequest, userContext)
+
+
+
             connection.interceptor = interceptor
 
             val remoteAddress = try {
@@ -133,7 +133,7 @@ class ProxyServer(val port: Int = 8088,
                 }
             } catch (e: UnknownHostException) {
                 connection.writeResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway") {
-                    HttpUtil.setKeepAlive(this, false)
+                    isKeepAlive = false
                 }
 
                 ReferenceCountUtil.release(initialRequest)
@@ -146,7 +146,6 @@ class ProxyServer(val port: Int = 8088,
 
                 ReferenceCountUtil.release(initialRequest)
 
-                connection.writeResponse(HttpResponseStatus(200, "Connection established"))
                 if (mitmManager == null) {
                     connection.startTunneling(remoteAddress)
                 } else {

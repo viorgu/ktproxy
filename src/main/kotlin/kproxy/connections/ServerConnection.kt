@@ -6,10 +6,7 @@ import io.netty.channel.ChannelFactory
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.ChannelPipeline
 import io.netty.channel.socket.nio.NioSocketChannel
-import io.netty.handler.codec.http.HttpContentDecompressor
-import io.netty.handler.codec.http.HttpObjectAggregator
-import io.netty.handler.codec.http.HttpRequestEncoder
-import io.netty.handler.codec.http.HttpResponseDecoder
+import io.netty.handler.codec.http.*
 import io.netty.handler.ssl.SslHandler
 import kproxy.EventLoops
 import kproxy.util.awaitChannel
@@ -51,7 +48,7 @@ class ServerConnection(
             pipeline.addLast("encoder", HttpRequestEncoder())
             pipeline.addLast("decoder", HttpResponseDecoder(8192, 8192 * 2, 8192 * 2))
 
-            pipeline.addLast("inflater", HttpContentDecompressor())
+            pipeline.addLast("decompressor", HttpContentDecompressor())
             pipeline.addLast("aggregator", HttpObjectAggregator(50 * 1024 * 1024))
         }
 

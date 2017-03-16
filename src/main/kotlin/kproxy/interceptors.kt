@@ -8,13 +8,13 @@ import javax.net.ssl.SSLSession
 
 
 interface ConnectionHandler {
-    fun mitm(initialRequest: HttpRequest, userContext: UserContext): SslEngineSource?
-    fun intercept(initialRequest: HttpRequest, userContext: UserContext): RequestInterceptor?
+    fun mitm(initialRequest: HttpRequest, userContext: UserContext): SslEngineSource? = null
+    fun intercept(initialRequest: HttpRequest, userContext: UserContext): RequestInterceptor? = null
 }
 
 interface RequestInterceptor {
-    fun handleClientRequest(httpObject: HttpObject): HttpResponse?
-    fun handleServerResponse(httpObject: HttpObject): HttpResponse?
+    fun handleClientRequest(httpObject: HttpObject): HttpResponse? = null
+    fun handleServerResponse(httpObject: HttpObject): HttpResponse? = null
 }
 
 interface SslEngineSource {

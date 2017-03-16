@@ -2,25 +2,13 @@ package kproxy
 
 import io.netty.handler.codec.http.*
 import kotlinx.coroutines.experimental.runBlocking
-import kproxy.util.hostname
-import kproxy.util.log
-import kproxy.util.path
+import kproxy.util.*
 import net.lightbody.bmp.mitm.KeyStoreFileCertificateSource
 import net.lightbody.bmp.mitm.RootCertificateGenerator
 import net.lightbody.bmp.mitm.manager.KProxyImpersonatingMitmManager
 import java.io.File
 import java.net.InetSocketAddress
 
-
-/*TODO:
-https://tools.ietf.org/html/rfc7230
-
-- Check connection headers
-- Add via
-- Absolute vs origin-form URI
-- Messages left in channels
-
- */
 
 fun main(args: Array<String>) = runBlocking {
 
@@ -54,13 +42,19 @@ class Authenticator : ProxyAuthenticator {
 class Interceptor(val sslEngineSource: SslEngineSource?) : ConnectionHandler {
     override fun mitm(initialRequest: HttpRequest, userContext: UserContext) = sslEngineSource
 
-    override fun intercept(initialRequest: HttpRequest, userContext: UserContext) = Handler(userContext)
+    override fun intercept(initialRequest: HttpRequest, userContext: UserContext): RequestInterceptor? {
+        if(!initialRequest.isAbsoluteFormUri) {
+            return ProxyHttpRequestHandler()
+        } else {
+            return Handler(userContext)
+        }
+    }
 }
 
 class Handler(val userContext: UserContext) : RequestInterceptor {
     override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
         if (httpObject is FullHttpRequest) {
-            log("request from ${userContext.address} for ${httpObject.hostname}${httpObject.path}")
+            log("request from ${userContext.address} for ${httpObject.hostname}${httpObject.originFormUri}")
         }
 
         //return buildResponse(body = "Hello world")
@@ -74,5 +68,12 @@ class Handler(val userContext: UserContext) : RequestInterceptor {
             }
         }
         return null
+    }
+}
+
+
+class ProxyHttpRequestHandler : RequestInterceptor {
+    override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
+        return buildResponse(body = "Hello")
     }
 }

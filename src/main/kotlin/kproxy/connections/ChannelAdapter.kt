@@ -42,6 +42,7 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
                               contentType: String = "text/html; charset=utf-8",
                               body: String? = null,
                               block: (FullHttpResponse.() -> Unit)? = null) {
+        log("writing $status")
         write(buildResponse(status, httpVersion, contentType, body, block))
     }
 
@@ -54,11 +55,11 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
         launch(job + Unconfined) {
             log("read")
-            //        log("""
-//got:
-//---------------
-//$msg
-//---------------""")
+            log("""
+got:
+---------------
+$msg
+---------------""")
 
             readChannel.send(msg)
 
@@ -70,8 +71,13 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
 
     fun disconnectAsync() = launch(Unconfined) {
         if (isConnected) {
-            write(Unpooled.EMPTY_BUFFER, flush = true)
-            channel.disconnect().join()
+            try {
+                write(Unpooled.EMPTY_BUFFER, flush = true)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            } finally {
+                channel.disconnect().join()
+            }
         }
     }
 
@@ -79,7 +85,8 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         log("ERROR: ${cause.message}")
         cause.printStackTrace()
-        disconnectAsync()
+        //disconnectAsync()
+        job.cancel(cause)
     }
 
     override fun channelWritabilityChanged(ctx: ChannelHandlerContext) {

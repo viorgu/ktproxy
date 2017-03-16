@@ -5,17 +5,17 @@ import io.netty.handler.codec.http.*
 import java.nio.charset.StandardCharsets
 
 
-val HTTP_URL_MATCH = Regex("^(?:https?://)?([^/]*)(.*)$", RegexOption.IGNORE_CASE)
+val HTTP_URL_MATCH = Regex("^(?:(https?)://)?([^/]*)(.*)$", RegexOption.IGNORE_CASE)
 
 val HttpRequest.isConnect
     get() = method() == HttpMethod.CONNECT
 
 val HttpRequest.host: String
     get() {
-        val hostAndPort = HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(1)
+        val hostAndPort = HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(2)
 
         return if (hostAndPort.isNullOrBlank()) {
-            headers().getAll(HttpHeaderNames.HOST)?.firstOrNull().orEmpty()
+            headers().get(HttpHeaderNames.HOST).orEmpty()
         } else {
             hostAndPort.orEmpty()
         }
@@ -24,8 +24,21 @@ val HttpRequest.host: String
 val HttpRequest.hostname: String
     get() = host.substringBefore(":")
 
-val HttpRequest.path: String
-    get() = HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(2).orEmpty()
+val HttpRequest.originFormUri: String
+    get() = HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(3).orEmpty()
+
+val HttpRequest.isAbsoluteFormUri: Boolean
+    get() = !HTTP_URL_MATCH.matchEntire(uri())?.groupValues?.getOrNull(2).isNullOrEmpty()
+
+
+var HttpRequest.isKeepAlive: Boolean
+    get() = HttpUtil.isKeepAlive(this)
+    set(value) = HttpUtil.setKeepAlive(this, value)
+
+var HttpResponse.isKeepAlive: Boolean
+    get() = HttpUtil.isKeepAlive(this)
+    set(value) = HttpUtil.setKeepAlive(this, value)
+
 
 
 fun buildResponse(status: HttpResponseStatus = HttpResponseStatus.OK,

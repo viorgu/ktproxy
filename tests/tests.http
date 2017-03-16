@@ -1,6 +1,27 @@
 GET http://nexcore.net/test.html
 Connection: keep-alive
 Proxy-Authorization: Basic asds
+Accept-Encoding: 
+
+###
+
+GET https://nexcore.net/test.html
+Connection: keep-alive
+Proxy-Authorization: Basic asds
+Accept-Encoding: 
+
+###
+
+GET http://api.mready.net/echo
+Connection: keep-alive
+Proxy-Authorization: Basic asds
+Accept-Encoding: 
+
+
+###
+
+GET http://localhost:8088/
+
 
 ###
 
