@@ -34,6 +34,8 @@ object EventLoops {
 
 
 object Config {
+    val proxyName = "KtProxy"
+
     val maxRequestBufferSize = 50 * 1024 * 1024
     val maxResponseBufferSize = 50 * 1024 * 1024
     val maxInitialLineLength = 8192
@@ -46,6 +48,8 @@ class ProxyServer(val port: Int = 8088,
                   val config: Config = Config,
                   val authenticator: ProxyAuthenticator? = null,
                   val connectionHandler: ConnectionHandler? = null) {
+
+    val log by kLogger()
 
     val activeClients: MutableList<ClientConnection> = Collections.synchronizedList(mutableListOf())
 
@@ -67,7 +71,7 @@ class ProxyServer(val port: Int = 8088,
 
             val listenAddress = channel.localAddress() as InetSocketAddress
 
-            log("Proxy started at address: $listenAddress")
+            log.info { "Proxy started at address: $listenAddress" }
         }
     }
 
@@ -92,8 +96,8 @@ class ProxyServer(val port: Int = 8088,
 
             val clientAddress = connection.channel.remoteAddress() as InetSocketAddress
 
-            log("Active connections: ${activeClients.size} -- ${activeClients.joinToString { it.name }}")
-            log("[$clientId] New connection from $clientAddress for ${initialRequest.uri()}")
+            log.debug { "Active connections: ${activeClients.size} -- ${activeClients.joinToString { it.name }}" }
+            log.debug { "[$clientId] New connection from $clientAddress for ${initialRequest.uri()}" }
 
             val userContext = if (authenticator != null) {
                 if (!initialRequest.headers().contains(HttpHeaderNames.PROXY_AUTHORIZATION)) {

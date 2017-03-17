@@ -23,13 +23,13 @@ import javax.net.ssl.SSLEngine
 
 
 enum class ConnectionType {
-    UNKNOWN, DEFAULT, MITM, TUNNEL
+    UNKNOWN, HTTP, MITM, TUNNEL
 }
 
 
 class ClientConnection(val id: Int,
                        val config: Config,
-                       override val channel: Channel) : ChannelAdapter("client-$id") {
+                       override val channel: Channel) : ChannelAdapter() {
 
     var type = ConnectionType.UNKNOWN
         private set
@@ -37,7 +37,7 @@ class ClientConnection(val id: Int,
     var interceptor: RequestInterceptor? = null
     val remoteConnections = ConcurrentHashMap<String, RemoteConnection>()
 
-    val nextServerId = AtomicInteger()
+    private val nextServerId = AtomicInteger()
 
     init {
         enableHttpDecoding(channel.pipeline())
@@ -45,8 +45,7 @@ class ClientConnection(val id: Int,
 
         job.invokeOnCompletion {
             if (it != null) {
-                log("error ${it.message}")
-                it.printStackTrace()
+                log.error(it) { it.message }
 
                 if (isConnected) {
                     try {
@@ -63,17 +62,17 @@ class ClientConnection(val id: Int,
                 }
             }
 
-            log("client connection closed")
+            log.info { "client connection closed" }
 
             remoteConnections.forEach {
-                log("disconnecting from ${it.key} [connected: ${it.value.isConnected}]")
+                log.info { "disconnecting from ${it.key}, was connected: ${it.value.isConnected}" }
                 it.value.disconnectAsync()
             }
         }
     }
 
     fun startReading() {
-        type = ConnectionType.DEFAULT
+        type = ConnectionType.HTTP
 
         launch(job + Unconfined) {
             var currentRemoteConnection: RemoteConnection? = null
@@ -99,7 +98,7 @@ class ClientConnection(val id: Int,
                             }
                         }
                         null -> {
-                            log("server disconnected ${currentRemoteConnection?.remoteAddress}")
+                            log.info { "server disconnected ${currentRemoteConnection?.remoteAddress}" }
                             currentRemoteConnection = null
                         }
                         else -> TODO("Got $it")
@@ -149,15 +148,15 @@ class ClientConnection(val id: Int,
         }
     }
 
-    suspend fun findServerConnection(host: String): RemoteConnection? {
+    private suspend fun findServerConnection(host: String): RemoteConnection? {
         var remote = remoteConnections[host]
 
         if (remote != null) {
-            log("Reusing connection $host")
+            log.debug { "Reusing connection $host" }
 
             return remote
         } else {
-            log("Connecting to $host")
+            log.debug { "Connecting to $host" }
 
             val remoteAddress = HostAndPort.fromString(host).withDefaultPort(80).let {
                 InetSocketAddress(InetAddress.getByName(it.host), it.port)
@@ -303,7 +302,7 @@ class ClientConnection(val id: Int,
 
         stripConnectionTokens(headers)
         stripHopByHopHeaders(headers)
-        addVia(headers, "kproxy")
+        addVia(headers, config.proxyName)
 
         request.isKeepAlive = true
     }
@@ -313,7 +312,7 @@ class ClientConnection(val id: Int,
 
         stripConnectionTokens(headers)
         stripHopByHopHeaders(headers)
-        addVia(headers, "kproxy")
+        addVia(headers, config.proxyName)
 
         // RFC2616 Section 14.18
         if (!headers.contains(HttpHeaderNames.DATE)) {
@@ -340,4 +339,7 @@ class ClientConnection(val id: Int,
         pipeline.remove("compressor")
         pipeline.remove("aggregator")
     }
+
+    override val loggableState: String?
+        get() = "$id|$type|$isConnected|${remoteConnections.size}"
 }

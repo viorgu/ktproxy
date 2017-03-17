@@ -6,6 +6,7 @@ import kproxy.util.*
 import net.lightbody.bmp.mitm.KeyStoreFileCertificateSource
 import net.lightbody.bmp.mitm.RootCertificateGenerator
 import net.lightbody.bmp.mitm.manager.KProxyImpersonatingMitmManager
+import org.slf4j.impl.SimpleLogger
 import java.io.File
 import java.net.InetSocketAddress
 
@@ -43,7 +44,7 @@ class Interceptor(val sslEngineSource: SslEngineSource?) : ConnectionHandler {
     override fun mitm(initialRequest: HttpRequest, userContext: UserContext) = sslEngineSource
 
     override fun intercept(initialRequest: HttpRequest, userContext: UserContext): RequestInterceptor? {
-        if(!initialRequest.isAbsoluteFormUri) {
+        if (!initialRequest.isAbsoluteFormUri) {
             return ProxyHttpRequestHandler()
         } else {
             return Handler(userContext)
@@ -52,9 +53,12 @@ class Interceptor(val sslEngineSource: SslEngineSource?) : ConnectionHandler {
 }
 
 class Handler(val userContext: UserContext) : RequestInterceptor {
+
+    val log by kLogger()
+
     override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
         if (httpObject is FullHttpRequest) {
-            log("request from ${userContext.address} for ${httpObject.hostname}${httpObject.originFormUri}")
+            log.info { "request from ${userContext.address} for ${httpObject.hostname}${httpObject.originFormUri}" }
         }
 
         //return buildResponse(body = "Hello world")

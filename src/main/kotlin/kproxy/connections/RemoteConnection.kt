@@ -17,12 +17,12 @@ import javax.net.ssl.SSLEngine
 
 
 class RemoteConnection(
-        clientId: Int,
-        id: Int,
+        val clientId: Int,
+        val remoteId: Int,
         val config: Config,
         val remoteAddress: InetSocketAddress,
         val sslEngine: SSLEngine? = null,
-        val tunnel: Boolean = false) : ChannelAdapter("server-$clientId-$id(${remoteAddress.hostName})") {
+        val tunnel: Boolean = false) : ChannelAdapter() {
 
     override lateinit var channel: Channel
 
@@ -51,7 +51,7 @@ class RemoteConnection(
             pipeline.addLast("decoder", HttpResponseDecoder(config.maxInitialLineLength, config.maxHeaderSize, config.maxChunkSize))
 
             pipeline.addLast("decompressor", HttpContentDecompressor())
-            pipeline.addLast("aggregator", HttpObjectAggregator(config.maxRequestBufferSize))
+            pipeline.addLast("aggregator", HttpObjectAggregator(config.maxResponseBufferSize))
         }
 
         pipeline.addLast("handler", this)
@@ -66,4 +66,7 @@ class RemoteConnection(
 
         handler.handshakeFuture().join()
     }
+
+    override val loggableState: String?
+        get() = "$clientId/$remoteId|${remoteAddress.hostString}|$isConnected"
 }

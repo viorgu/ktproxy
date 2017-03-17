@@ -13,23 +13,24 @@ import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.selects.SelectBuilder
 import kotlinx.coroutines.experimental.selects.select
+import kproxy.util.LoggerMetadata
 import kproxy.util.buildResponse
 import kproxy.util.join
+import kproxy.util.kLogger
+import org.bouncycastle.asn1.x500.style.RFC4519Style.name
 import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 
 
-abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter() {
+abstract class ChannelAdapter : ChannelInboundHandlerAdapter(), LoggerMetadata {
+    protected val log by kLogger()
+
     abstract val channel: Channel
 
     val job = Job()
     val readChannel = AsyncChannel<Any>()
 
-    fun log(message: String) {
-        println("[${Thread.currentThread().name}] $name: $message")
-    }
-
     suspend fun write(msg: Any, flush: Boolean = true) {
-        log("write")
+        log.debug { "write" }
         if (flush) {
             channel.writeAndFlush(msg).join()
         } else {
@@ -42,7 +43,7 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
                               contentType: String = "text/html; charset=utf-8",
                               body: String? = null,
                               block: (FullHttpResponse.() -> Unit)? = null) {
-        log("writing $status")
+        log.debug { "writing $status" }
         write(buildResponse(status, httpVersion, contentType, body, block))
     }
 
@@ -54,16 +55,17 @@ abstract class ChannelAdapter(val name: String) : ChannelInboundHandlerAdapter()
 
     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
         launch(job + Unconfined) {
-            log("read")
-            log("""
+            log.debug { "read" }
+            log.trace {
+                """
 got:
 ---------------
 $msg
----------------""")
+---------------
+"""
+            }
 
             readChannel.send(msg)
-
-            //log("processed message")
         }
     }
 
@@ -83,8 +85,7 @@ $msg
 
     @Suppress("OverridingDeprecatedMember")
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
-        log("ERROR: ${cause.message}")
-        cause.printStackTrace()
+        log.error(cause) { "exceptionCaught ${cause.message}" }
         //disconnectAsync()
         job.cancel(cause)
     }
@@ -95,12 +96,12 @@ $msg
     }
 
     override fun channelActive(ctx: ChannelHandlerContext) {
-        log("channelActive")
+        log.debug { "channelActive" }
         super.channelActive(ctx)
     }
 
     override fun channelInactive(ctx: ChannelHandlerContext) {
-        log("channelInactive")
+        log.debug { "channelInactive" }
         super.channelInactive(ctx)
 
         readChannel.poll()?.let { ReferenceCountUtil.release(it) }
