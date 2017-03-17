@@ -29,10 +29,21 @@ import java.util.concurrent.atomic.AtomicInteger
 object EventLoops {
     val bossGroup = NioEventLoopGroup()
     val workerGroup = NioEventLoopGroup()
-    val serverConnectionsGroup = NioEventLoopGroup()
+    val remoteConnectionsGroup = NioEventLoopGroup()
 }
 
+
+object Config {
+    val maxRequestBufferSize = 50 * 1024 * 1024
+    val maxResponseBufferSize = 50 * 1024 * 1024
+    val maxInitialLineLength = 8192
+    val maxHeaderSize = 2 * 8192
+    val maxChunkSize = 2 * 8192
+}
+
+
 class ProxyServer(val port: Int = 8088,
+                  val config: Config = Config,
                   val authenticator: ProxyAuthenticator? = null,
                   val connectionHandler: ConnectionHandler? = null) {
 
@@ -65,7 +76,7 @@ class ProxyServer(val port: Int = 8088,
 
             val clientId = nextConnectionId.getAndIncrement()
 
-            val connection = ClientConnection(clientId, channel)
+            val connection = ClientConnection(clientId, config, channel)
 
             val initialRequest = connection.readChannel.receive() as? HttpRequest
 

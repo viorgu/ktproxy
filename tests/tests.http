@@ -12,11 +12,11 @@ Accept-Encoding:
 
 ###
 
-GET http://api.mready.net/echo
+POST http://api.mready.net/echo
 Connection: keep-alive
 Proxy-Authorization: Basic asds
-Accept-Encoding: 
 
+hello
 
 ###
 

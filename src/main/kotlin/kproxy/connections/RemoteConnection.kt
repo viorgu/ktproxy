@@ -8,6 +8,7 @@ import io.netty.channel.ChannelPipeline
 import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.http.*
 import io.netty.handler.ssl.SslHandler
+import kproxy.Config
 import kproxy.EventLoops
 import kproxy.util.awaitChannel
 import kproxy.util.join
@@ -15,9 +16,10 @@ import java.net.InetSocketAddress
 import javax.net.ssl.SSLEngine
 
 
-class ServerConnection(
+class RemoteConnection(
         clientId: Int,
         id: Int,
+        val config: Config,
         val remoteAddress: InetSocketAddress,
         val sslEngine: SSLEngine? = null,
         val tunnel: Boolean = false) : ChannelAdapter("server-$clientId-$id(${remoteAddress.hostName})") {
@@ -26,7 +28,7 @@ class ServerConnection(
 
     suspend fun connect() {
         val bootstrap = Bootstrap().apply {
-            group(EventLoops.serverConnectionsGroup)
+            group(EventLoops.remoteConnectionsGroup)
             channelFactory(ChannelFactory { NioSocketChannel() })
             //option(ChannelOption.CONNECT_TIMEOUT_MILLIS, proxyServer.connectTimeout)
         }
@@ -46,10 +48,10 @@ class ServerConnection(
     private fun initPipeline(pipeline: ChannelPipeline) {
         if (!tunnel) {
             pipeline.addLast("encoder", HttpRequestEncoder())
-            pipeline.addLast("decoder", HttpResponseDecoder(8192, 8192 * 2, 8192 * 2))
+            pipeline.addLast("decoder", HttpResponseDecoder(config.maxInitialLineLength, config.maxHeaderSize, config.maxChunkSize))
 
             pipeline.addLast("decompressor", HttpContentDecompressor())
-            pipeline.addLast("aggregator", HttpObjectAggregator(50 * 1024 * 1024))
+            pipeline.addLast("aggregator", HttpObjectAggregator(config.maxRequestBufferSize))
         }
 
         pipeline.addLast("handler", this)

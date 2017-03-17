@@ -9,6 +9,7 @@ import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
+import kproxy.Config
 import kproxy.RequestInterceptor
 import kproxy.SslEngineSource
 import kproxy.util.*
@@ -26,13 +27,15 @@ enum class ConnectionType {
 }
 
 
-class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdapter("client-$id") {
+class ClientConnection(val id: Int,
+                       val config: Config,
+                       override val channel: Channel) : ChannelAdapter("client-$id") {
 
     var type = ConnectionType.UNKNOWN
         private set
 
     var interceptor: RequestInterceptor? = null
-    val serverConnections = ConcurrentHashMap<String, ServerConnection>()
+    val remoteConnections = ConcurrentHashMap<String, RemoteConnection>()
 
     val nextServerId = AtomicInteger()
 
@@ -62,7 +65,7 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
 
             log("client connection closed")
 
-            serverConnections.forEach {
+            remoteConnections.forEach {
                 log("disconnecting from ${it.key} [connected: ${it.value.isConnected}]")
                 it.value.disconnectAsync()
             }
@@ -73,13 +76,13 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
         type = ConnectionType.DEFAULT
 
         launch(job + Unconfined) {
-            var currentServerConnection: ServerConnection? = null
+            var currentRemoteConnection: RemoteConnection? = null
 
             selectWhileActive {
 
-                serverConnections.values.removeIf { it.readChannel.isClosedForReceive }
+                remoteConnections.values.removeIf { it.readChannel.isClosedForReceive }
 
-                currentServerConnection?.readChannel?.onReceiveOrNull {
+                currentRemoteConnection?.readChannel?.onReceiveOrNull {
                     when (it) {
                         is HttpResponse -> {
 
@@ -96,8 +99,8 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
                             }
                         }
                         null -> {
-                            log("server disconnected ${currentServerConnection?.remoteAddress}")
-                            currentServerConnection = null
+                            log("server disconnected ${currentRemoteConnection?.remoteAddress}")
+                            currentRemoteConnection = null
                         }
                         else -> TODO("Got $it")
                     }
@@ -134,8 +137,8 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
                                     return@onReceiveOrNull
                                 }
 
-                                currentServerConnection = findServerConnection(it.host)
-                                currentServerConnection?.write(it)
+                                currentRemoteConnection = findServerConnection(it.host)
+                                currentRemoteConnection?.write(it)
                             }
                         }
                         null -> Unit
@@ -146,13 +149,13 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
         }
     }
 
-    suspend fun findServerConnection(host: String): ServerConnection? {
-        var server = serverConnections[host]
+    suspend fun findServerConnection(host: String): RemoteConnection? {
+        var remote = remoteConnections[host]
 
-        if (server != null) {
+        if (remote != null) {
             log("Reusing connection $host")
 
-            return server
+            return remote
         } else {
             log("Connecting to $host")
 
@@ -160,16 +163,16 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
                 InetSocketAddress(InetAddress.getByName(it.host), it.port)
             }
 
-            server = ServerConnection(id, nextServerId.getAndIncrement(), remoteAddress)
+            remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress)
             try {
-                server.connect()
+                remote.connect()
             } catch (e: IOException) {
                 writeResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway")
                 return null
             }
 
-            serverConnections[host] = server
-            return server
+            remoteConnections[host] = remote
+            return remote
         }
     }
 
@@ -179,11 +182,11 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
         channel.config().isAutoRead = false
 
         val sslEngineServer = sslEngineSource.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
-        val server = ServerConnection(id, nextServerId.getAndIncrement(), remoteAddress, sslEngine = sslEngineServer)
+        val remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress, sslEngine = sslEngineServer)
 
         launch(job + Unconfined) {
             try {
-                server.connect()
+                remote.connect()
             } catch (e: IOException) {
                 writeResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway") {
                     isKeepAlive = false
@@ -191,7 +194,7 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
                 disconnectAsync().join()
                 return@launch
             }
-            serverConnections[remoteAddress.hostName] = server
+            remoteConnections[remoteAddress.hostName] = remote
 
             writeResponse(HttpResponseStatus(200, "Connection established"))
 
@@ -200,7 +203,7 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
 
             selectWhileActive {
 
-                server.readChannel.onReceiveOrNull {
+                remote.readChannel.onReceiveOrNull {
                     when (it) {
                         is HttpResponse -> {
                             val handlerResponse = interceptor?.handleServerResponse(it)
@@ -226,7 +229,7 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
                                 ReferenceCountUtil.release(it)
                                 write(handlerResponse)
                             } else {
-                                server.write(it)
+                                remote.write(it)
                             }
                         }
                         null -> Unit
@@ -253,11 +256,11 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
     fun startTunneling(remoteAddress: InetSocketAddress) {
         type = ConnectionType.TUNNEL
 
-        val server = ServerConnection(id, nextServerId.getAndIncrement(), remoteAddress, tunnel = true)
+        val remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress, tunnel = true)
 
         launch(job + Unconfined) {
             try {
-                server.connect()
+                remote.connect()
             } catch (e: IOException) {
                 writeResponse(HttpResponseStatus.BAD_GATEWAY, body = "Bad Gateway") {
                     isKeepAlive = false
@@ -265,14 +268,14 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
                 disconnectAsync()
                 return@launch
             }
-            serverConnections[remoteAddress.hostName] = server
+            remoteConnections[remoteAddress.hostName] = remote
 
             writeResponse(HttpResponseStatus(200, "Connection established"))
             disableHttpDecoding(channel.pipeline())
 
             selectWhileActive {
 
-                server.readChannel.onReceiveOrNull {
+                remote.readChannel.onReceiveOrNull {
                     if (it == null) {
                         disconnectAsync().join()
                     } else {
@@ -282,7 +285,7 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
 
                 readChannel.onReceiveOrNull {
                     if (it != null) {
-                        server.write(it)
+                        remote.write(it)
                     }
                 }
             }
@@ -322,11 +325,11 @@ class ClientConnection(val id: Int, override val channel: Channel) : ChannelAdap
 
     private fun enableHttpDecoding(pipeline: ChannelPipeline) {
         pipeline.addLast("encoder", HttpResponseEncoder())
-        pipeline.addLast("decoder", HttpRequestDecoder(8192, 8192 * 2, 8192 * 2))
+        pipeline.addLast("decoder", HttpRequestDecoder(config.maxInitialLineLength, config.maxHeaderSize, config.maxChunkSize))
 
         pipeline.addLast("decompressor", HttpContentDecompressor())
         pipeline.addLast("compressor", HttpContentCompressor())
-        pipeline.addLast("aggregator", HttpObjectAggregator(50 * 1024 * 1024))
+        pipeline.addLast("aggregator", HttpObjectAggregator(config.maxRequestBufferSize))
     }
 
     private fun disableHttpDecoding(pipeline: ChannelPipeline) {

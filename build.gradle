@@ -26,9 +26,9 @@ kotlin {
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-core:0.13'
-    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:0.13'
-    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-nio:0.13'
+    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-core:0.14'
+    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:0.14'
+    compile 'org.jetbrains.kotlinx:kotlinx-coroutines-nio:0.14'
 
     compile 'io.netty:netty-all:4.1.8.Final'
     compile 'com.google.guava:guava:21.0'
