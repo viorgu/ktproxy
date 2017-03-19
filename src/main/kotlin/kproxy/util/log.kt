@@ -11,21 +11,22 @@ fun kLogger() = LoggerProvider
 object LoggerProvider {
     operator fun provideDelegate(thisRef: Any, property: KProperty<*>): ReadOnlyProperty<Any, KLogger> {
         val metadata = thisRef as? LoggerMetadata
-        val logger = LoggerFactory.getLogger(metadata?.loggableName ?: thisRef::class.java.name)
+        val logger = LoggerFactory.getLogger(metadata?.loggerName ?: thisRef::class.java.name)
 
         return KLogger(logger, metadata)
     }
 }
 
 interface LoggerMetadata {
-    val loggableName: String
+    val loggerName: String
         get() = this::class.java.name
 
     val loggableState: String?
         get() = null
 }
 
-class KLogger(val logger: Logger, val metadata: LoggerMetadata?) : ReadOnlyProperty<Any, KLogger> {
+class KLogger(val logger: Logger,
+              val metadata: LoggerMetadata?) : ReadOnlyProperty<Any, KLogger> {
 
     override fun getValue(thisRef: Any, property: KProperty<*>) = this
 

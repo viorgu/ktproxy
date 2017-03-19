@@ -65,7 +65,7 @@
     <orderEntry type="library" name="Gradle: org.jetbrains.kotlinx:kotlinx-coroutines-core:0.14" level="project" />
     <orderEntry type="library" name="Gradle: org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:0.14" level="project" />
     <orderEntry type="library" name="Gradle: org.jetbrains.kotlinx:kotlinx-coroutines-nio:0.14" level="project" />
-    <orderEntry type="library" name="Gradle: io.netty:netty-all:4.1.8.Final" level="project" />
+    <orderEntry type="library" name="Gradle: io.netty:netty-all:4.1.9.Final" level="project" />
     <orderEntry type="library" name="Gradle: com.google.guava:guava:21.0" level="project" />
     <orderEntry type="library" name="Gradle: org.slf4j:slf4j-api:1.7.24" level="project" />
     <orderEntry type="library" name="Gradle: org.slf4j:slf4j-simple:1.7.24" level="project" />

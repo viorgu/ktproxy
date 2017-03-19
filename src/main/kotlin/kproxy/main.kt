@@ -6,7 +6,6 @@ import kproxy.util.*
 import net.lightbody.bmp.mitm.KeyStoreFileCertificateSource
 import net.lightbody.bmp.mitm.RootCertificateGenerator
 import net.lightbody.bmp.mitm.manager.KProxyImpersonatingMitmManager
-import org.slf4j.impl.SimpleLogger
 import java.io.File
 import java.net.InetSocketAddress
 

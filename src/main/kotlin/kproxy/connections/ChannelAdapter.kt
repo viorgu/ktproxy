@@ -17,7 +17,6 @@ import kproxy.util.LoggerMetadata
 import kproxy.util.buildResponse
 import kproxy.util.join
 import kproxy.util.kLogger
-import org.bouncycastle.asn1.x500.style.RFC4519Style.name
 import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 
 

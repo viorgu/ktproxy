@@ -323,21 +323,25 @@ class ClientConnection(val id: Int,
     }
 
     private fun enableHttpDecoding(pipeline: ChannelPipeline) {
-        pipeline.addLast("encoder", HttpResponseEncoder())
-        pipeline.addLast("decoder", HttpRequestDecoder(config.maxInitialLineLength, config.maxHeaderSize, config.maxChunkSize))
+        pipeline.apply {
+            addLast("encoder", HttpResponseEncoder())
+            addLast("decoder", HttpRequestDecoder(config.maxInitialLineLength, config.maxHeaderSize, config.maxChunkSize))
 
-        pipeline.addLast("decompressor", HttpContentDecompressor())
-        pipeline.addLast("compressor", HttpContentCompressor())
-        pipeline.addLast("aggregator", HttpObjectAggregator(config.maxRequestBufferSize))
+            addLast("decompressor", HttpContentDecompressor())
+            addLast("compressor", HttpContentCompressor())
+            addLast("aggregator", HttpObjectAggregator(config.maxRequestBufferSize))
+        }
     }
 
     private fun disableHttpDecoding(pipeline: ChannelPipeline) {
-        pipeline.remove("encoder")
-        pipeline.remove("decoder")
+        pipeline.apply {
+            remove("encoder")
+            remove("decoder")
 
-        pipeline.remove("decompressor")
-        pipeline.remove("compressor")
-        pipeline.remove("aggregator")
+            remove("decompressor")
+            remove("compressor")
+            remove("aggregator")
+        }
     }
 
     override val loggableState: String?

@@ -96,7 +96,7 @@ class ProxyServer(val port: Int = 8088,
 
             val clientAddress = connection.channel.remoteAddress() as InetSocketAddress
 
-            log.debug { "Active connections: ${activeClients.size} -- ${activeClients.joinToString { it.name }}" }
+            log.debug { "Active connections: ${activeClients.size} -- ${activeClients.joinToString { it.id.toString() }}" }
             log.debug { "[$clientId] New connection from $clientAddress for ${initialRequest.uri()}" }
 
             val userContext = if (authenticator != null) {
