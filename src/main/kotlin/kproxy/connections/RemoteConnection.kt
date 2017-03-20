@@ -68,5 +68,5 @@ class RemoteConnection(
     }
 
     override val loggableState: String?
-        get() = "$clientId/$remoteId|${remoteAddress.hostString}|$isConnected"
+        get() = "$clientId/$remoteId|${remoteAddress.hostString}|c:$isConnected"
 }

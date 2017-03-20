@@ -24,13 +24,13 @@ fun main(args: Array<String>) = runBlocking {
         }
     }
 
-    val mitmManager = KProxyImpersonatingMitmManager.builder()
+    val sslEngineSource = KProxyImpersonatingMitmManager.builder()
             .rootCertificateSource(rootCertificateGenerator)
             .build()
 
     ProxyServer(
             //authenticator = Authenticator(),
-            connectionHandler = Interceptor(mitmManager)).start()
+            connectionHandler = Interceptor(sslEngineSource)).start()
 }
 
 class Authenticator : ProxyAuthenticator {
@@ -40,11 +40,15 @@ class Authenticator : ProxyAuthenticator {
 }
 
 class Interceptor(val sslEngineSource: SslEngineSource?) : ConnectionHandler {
-    override fun mitm(initialRequest: HttpRequest, userContext: UserContext) = sslEngineSource
+    override fun sslEngineSource(initialRequest: HttpRequest, userContext: UserContext) = sslEngineSource
 
     override fun intercept(initialRequest: HttpRequest, userContext: UserContext): RequestInterceptor? {
         if (!initialRequest.isAbsoluteFormUri) {
-            return ProxyHttpRequestHandler()
+            if (initialRequest.originFormUri.startsWith("/r/")) {
+                return Reverse()
+            } else {
+                return ProxyHttpRequestHandler()
+            }
         } else {
             return Handler(userContext)
         }
@@ -52,7 +56,6 @@ class Interceptor(val sslEngineSource: SslEngineSource?) : ConnectionHandler {
 }
 
 class Handler(val userContext: UserContext) : RequestInterceptor {
-
     val log by kLogger()
 
     override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
@@ -76,7 +79,60 @@ class Handler(val userContext: UserContext) : RequestInterceptor {
 
 
 class ProxyHttpRequestHandler : RequestInterceptor {
+    val log by kLogger()
+
     override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
+        if (httpObject is FullHttpRequest) {
+            log.info { "direct request for ${httpObject.originFormUri} $httpObject" }
+        }
         return buildResponse(body = "Hello")
+    }
+}
+
+
+class Reverse : RequestInterceptor {
+    val log by kLogger()
+
+    override fun handleClientRequest(httpObject: HttpObject): HttpResponse? {
+        if (httpObject is HttpRequest && httpObject.originFormUri.startsWith("/r/")) {
+            val remoteUri = httpObject.originFormUri.substringAfter("/r/")
+
+            log.info { "rewriting ${httpObject.uri()} to $remoteUri" }
+
+            httpObject.uri = "/" + remoteUri.substringAfter("/", missingDelimiterValue = "")
+            httpObject.headers().set(HttpHeaderNames.HOST, remoteUri.substringBefore("/"))
+        }
+
+        return null
+    }
+
+    override fun handleServerResponse(httpObject: HttpObject): HttpResponse? {
+        if (httpObject is HttpResponse) {
+            if (httpObject.isRedirect()) {
+                val location = httpObject.headers()[HttpHeaderNames.LOCATION]
+
+                val locationParts = HTTP_URL_MATCH.matchEntire(location) ?: return null
+                val newLocation = buildString {
+                    append("http://localhost:8088/r/")
+                    append(locationParts.groupValues[2])
+                    if (locationParts.groupValues[1].toLowerCase() == "https") {
+                        append(":443")
+                    }
+                    append(locationParts.groupValues[3])
+                }
+
+                httpObject.headers()[HttpHeaderNames.LOCATION] = newLocation
+
+                log.info { "rewriting location $location to $newLocation" }
+            }
+        }
+
+        log.info { httpObject }
+
+        return super.handleServerResponse(httpObject)
+    }
+
+    fun HttpResponse.isRedirect(): Boolean {
+        return status() == HttpResponseStatus.FOUND || status() == HttpResponseStatus.MOVED_PERMANENTLY
     }
 }

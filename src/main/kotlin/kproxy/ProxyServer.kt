@@ -97,34 +97,11 @@ class ProxyServer(val port: Int = 8088,
             val clientAddress = connection.channel.remoteAddress() as InetSocketAddress
 
             log.debug { "Active connections: ${activeClients.size} -- ${activeClients.joinToString { it.id.toString() }}" }
-            log.debug { "[$clientId] New connection from $clientAddress for ${initialRequest.uri()}" }
+            log.info { "[$clientId] New connection from $clientAddress for ${initialRequest.uri()}" }
 
-            val userContext = if (authenticator != null) {
-                if (!initialRequest.headers().contains(HttpHeaderNames.PROXY_AUTHORIZATION)) {
-                    null
-                } else {
-                    val header = initialRequest.headers().get(HttpHeaderNames.PROXY_AUTHORIZATION)
-                    val value = header.substringAfter("Basic ").trim()
+            val userContext = authenticateUser(initialRequest, clientAddress)
 
-                    try {
-                        val decodedString = String(BaseEncoding.base64().decode(value), Charset.forName("UTF-8"))
-
-                        val username = decodedString.substringBefore(":")
-                        val password = decodedString.substringAfter(":")
-
-                        authenticator.authenticate(
-                                clientAddress = clientAddress,
-                                username = username,
-                                password = password)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        null
-                    }
-                }
-            } else {
-                UserContext(clientAddress)
-            }
-
+            // Unable to authenticate user, disconnect
             if (userContext == null) {
                 connection.writeResponse(HttpResponseStatus.PROXY_AUTHENTICATION_REQUIRED,
                         body = "Proxy Authentication Required") {
@@ -137,9 +114,6 @@ class ProxyServer(val port: Int = 8088,
             }
 
             val interceptor = connectionHandler?.intercept(initialRequest, userContext)
-
-
-
             connection.interceptor = interceptor
 
             val remoteAddress = try {
@@ -156,18 +130,18 @@ class ProxyServer(val port: Int = 8088,
                 return@launch
             }
 
-            if (initialRequest.isConnect) {
-                val mitmManager = connectionHandler?.mitm(initialRequest, userContext)
+            val sslEngineSource = connectionHandler?.sslEngineSource(initialRequest, userContext)
 
+            if (initialRequest.isConnect) {
                 ReferenceCountUtil.release(initialRequest)
 
-                if (mitmManager == null) {
+                if (sslEngineSource == null) {
                     connection.startTunneling(remoteAddress)
                 } else {
-                    connection.startMitm(remoteAddress, mitmManager)
+                    connection.startMitm(remoteAddress, sslEngineSource)
                 }
             } else {
-                connection.startReading()
+                connection.startReading(sslEngineSource)
                 connection.readChannel.send(initialRequest)
             }
 
@@ -177,4 +151,33 @@ class ProxyServer(val port: Int = 8088,
             }
         }
     }
+
+    private fun authenticateUser(initialRequest: HttpRequest, clientAddress: InetSocketAddress): UserContext? {
+        if (authenticator != null) {
+            if (!initialRequest.headers().contains(HttpHeaderNames.PROXY_AUTHORIZATION)) {
+                return null
+            } else {
+                val header = initialRequest.headers().get(HttpHeaderNames.PROXY_AUTHORIZATION)
+                val value = header.substringAfter("Basic ").trim()
+
+                try {
+                    val decodedString = String(BaseEncoding.base64().decode(value), Charset.forName("UTF-8"))
+
+                    val username = decodedString.substringBefore(":")
+                    val password = decodedString.substringAfter(":")
+
+                    return authenticator.authenticate(
+                            clientAddress = clientAddress,
+                            username = username,
+                            password = password)
+                } catch (e: Exception) {
+                    log.error(e) { e.message }
+                    return null
+                }
+            }
+        } else {
+            return UserContext(clientAddress)
+        }
+    }
+
 }

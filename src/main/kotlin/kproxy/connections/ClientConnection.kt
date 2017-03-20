@@ -71,7 +71,7 @@ class ClientConnection(val id: Int,
         }
     }
 
-    fun startReading() {
+    fun startReading(sslEngineSource: SslEngineSource? = null) {
         type = ConnectionType.HTTP
 
         launch(job + Unconfined) {
@@ -118,6 +118,7 @@ class ClientConnection(val id: Int,
                             }
 
                             val directToProxyRequest = !it.isAbsoluteFormUri
+                            val hostBefore = it.host
 
                             preprocessRequest(it)
 
@@ -126,7 +127,7 @@ class ClientConnection(val id: Int,
                                 ReferenceCountUtil.release(it)
                                 write(handlerResponse)
                             } else {
-                                if (directToProxyRequest) {
+                                if (directToProxyRequest && hostBefore == it.host) {
                                     // prevent endless loop in unhandled direct to proxy requests
                                     writeResponse(HttpResponseStatus.BAD_REQUEST,
                                             body = "Bad Request to URI: ${it.uri()}") {
@@ -136,7 +137,7 @@ class ClientConnection(val id: Int,
                                     return@onReceiveOrNull
                                 }
 
-                                currentRemoteConnection = findServerConnection(it.host)
+                                currentRemoteConnection = findServerConnection(it.host, sslEngineSource)
                                 currentRemoteConnection?.write(it)
                             }
                         }
@@ -148,7 +149,7 @@ class ClientConnection(val id: Int,
         }
     }
 
-    private suspend fun findServerConnection(host: String): RemoteConnection? {
+    private suspend fun findServerConnection(host: String, sslEngineSource: SslEngineSource?): RemoteConnection? {
         var remote = remoteConnections[host]
 
         if (remote != null) {
@@ -162,7 +163,13 @@ class ClientConnection(val id: Int,
                 InetSocketAddress(InetAddress.getByName(it.host), it.port)
             }
 
-            remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress)
+            val sslEngine = if (remoteAddress.port == 443) {
+                sslEngineSource?.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
+            } else {
+                null
+            }
+
+            remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress, sslEngine = sslEngine)
             try {
                 remote.connect()
             } catch (e: IOException) {
@@ -180,10 +187,11 @@ class ClientConnection(val id: Int,
 
         channel.config().isAutoRead = false
 
-        val sslEngineServer = sslEngineSource.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
-        val remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress, sslEngine = sslEngineServer)
-
         launch(job + Unconfined) {
+
+            val sslEngineServer = sslEngineSource.serverSslEngine(remoteAddress.hostName, remoteAddress.port)
+            val remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress, sslEngine = sslEngineServer)
+
             try {
                 remote.connect()
             } catch (e: IOException) {
@@ -255,9 +263,10 @@ class ClientConnection(val id: Int,
     fun startTunneling(remoteAddress: InetSocketAddress) {
         type = ConnectionType.TUNNEL
 
-        val remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress, tunnel = true)
-
         launch(job + Unconfined) {
+
+            val remote = RemoteConnection(id, nextServerId.getAndIncrement(), config, remoteAddress, tunnel = true)
+
             try {
                 remote.connect()
             } catch (e: IOException) {
@@ -345,5 +354,5 @@ class ClientConnection(val id: Int,
     }
 
     override val loggableState: String?
-        get() = "$id|$type|$isConnected|${remoteConnections.size}"
+        get() = "$id|$type|c:$isConnected|rc:${remoteConnections.size}"
 }
