@@ -30,7 +30,7 @@ fun main(args: Array<String>) = runBlocking {
 
     ProxyServer(
             //authenticator = Authenticator(),
-            connectionHandler = Interceptor(sslEngineSource)).start()
+            clientConnectionHandler = Interceptor(sslEngineSource)).start()
 }
 
 class Authenticator : ProxyAuthenticator {
@@ -39,7 +39,7 @@ class Authenticator : ProxyAuthenticator {
     }
 }
 
-class Interceptor(val sslEngineSource: SslEngineSource?) : ConnectionHandler {
+class Interceptor(val sslEngineSource: SslEngineSource?) : ClientConnectionHandler {
     override fun sslEngineSource(initialRequest: HttpRequest, userContext: UserContext) = sslEngineSource
 
     override fun intercept(initialRequest: HttpRequest, userContext: UserContext): RequestInterceptor? {

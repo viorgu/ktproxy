@@ -16,7 +16,7 @@ import io.netty.util.ResourceLeakDetector
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
-import kproxy.connections.ClientConnection
+import kproxy.connections.*
 import kproxy.util.*
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -47,11 +47,11 @@ object Config {
 class ProxyServer(val port: Int = 8088,
                   val config: Config = Config,
                   val authenticator: ProxyAuthenticator? = null,
-                  val connectionHandler: ConnectionHandler? = null) {
+                  val clientConnectionHandler: ClientConnectionHandler? = null) {
 
     val log by kLogger()
 
-    val activeClients: MutableList<ClientConnection> = Collections.synchronizedList(mutableListOf())
+    val activeHandlers: MutableList<kproxy.connections.ConnectionHandler> = Collections.synchronizedList(mutableListOf())
 
     val nextConnectionId = AtomicInteger()
 
@@ -77,12 +77,12 @@ class ProxyServer(val port: Int = 8088,
 
     private fun handleIncomingConnection(channel: Channel) {
         launch(Unconfined) {
+            val connectionId = nextConnectionId.getAndIncrement()
 
-            val clientId = nextConnectionId.getAndIncrement()
+            val connection = ClientConnection(connectionId, channel, config)
 
-            val connection = ClientConnection(clientId, config, channel)
-
-            val initialRequest = connection.readChannel.receive() as? HttpRequest
+            val initialRequest = connection.read.receive() as? HttpRequest
+            connection.autoRead = false
 
             if (initialRequest == null || initialRequest.decoderResult().isFailure) {
                 connection.writeResponse(HttpResponseStatus.BAD_GATEWAY,
@@ -96,8 +96,8 @@ class ProxyServer(val port: Int = 8088,
 
             val clientAddress = connection.channel.remoteAddress() as InetSocketAddress
 
-            log.debug { "Active connections: ${activeClients.size} -- ${activeClients.joinToString { it.id.toString() }}" }
-            log.info { "[$clientId] New connection from $clientAddress for ${initialRequest.uri()}" }
+            log.debug { "Active connections: ${activeHandlers.size} -- ${activeHandlers.joinToString { it.id.toString() }}" }
+            log.info { "[$connectionId] New connection from $clientAddress for ${initialRequest.uri()}" }
 
             val userContext = authenticateUser(initialRequest, clientAddress)
 
@@ -113,8 +113,7 @@ class ProxyServer(val port: Int = 8088,
                 return@launch
             }
 
-            val interceptor = connectionHandler?.intercept(initialRequest, userContext)
-            connection.interceptor = interceptor
+            val interceptor = clientConnectionHandler?.intercept(initialRequest, userContext)
 
             val remoteAddress = try {
                 HostAndPort.fromString(initialRequest.host).withDefaultPort(80).let {
@@ -130,24 +129,29 @@ class ProxyServer(val port: Int = 8088,
                 return@launch
             }
 
-            val sslEngineSource = connectionHandler?.sslEngineSource(initialRequest, userContext)
+            val sslEngineSource = clientConnectionHandler?.sslEngineSource(initialRequest, userContext)
+
+            val handler: kproxy.connections.ConnectionHandler
 
             if (initialRequest.isConnect) {
                 ReferenceCountUtil.release(initialRequest)
 
                 if (sslEngineSource == null) {
-                    connection.startTunneling(remoteAddress)
+                    handler = TunnelingConnectionHandler(connectionId, config, connection, remoteAddress)
+                    handler.startTunneling()
                 } else {
-                    connection.startMitm(remoteAddress, sslEngineSource)
+                    handler = MitmConnectionHandler(connectionId, config, connection, remoteAddress, interceptor, sslEngineSource)
+                    handler.startMitm()
                 }
             } else {
-                connection.startReading(sslEngineSource)
-                connection.readChannel.send(initialRequest)
+                handler = HttpConnectionHandler(connectionId, config, connection, interceptor, sslEngineSource)
+                handler.startReading()
+                connection.read.send(initialRequest)
             }
 
-            activeClients += connection
+            activeHandlers += handler
             connection.job.invokeOnCompletion {
-                activeClients -= connection
+                activeHandlers -= handler
             }
         }
     }

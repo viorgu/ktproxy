@@ -26,7 +26,13 @@ abstract class ChannelAdapter : ChannelInboundHandlerAdapter(), LoggerMetadata {
     abstract val channel: Channel
 
     val job = Job()
-    val readChannel = AsyncChannel<Any>()
+    val read = AsyncChannel<Any>()
+
+    var autoRead: Boolean
+        get() = channel.config().isAutoRead
+        set(value) {
+            channel.config().isAutoRead = value
+        }
 
     suspend fun write(msg: Any, flush: Boolean = true) {
         log.debug { "write" }
@@ -64,7 +70,7 @@ $msg
 """
             }
 
-            readChannel.send(msg)
+            read.send(msg)
         }
     }
 
@@ -103,8 +109,8 @@ $msg
         log.debug { "channelInactive" }
         super.channelInactive(ctx)
 
-        readChannel.poll()?.let { ReferenceCountUtil.release(it) }
-        readChannel.close()
+        read.poll()?.let { ReferenceCountUtil.release(it) }
+        read.close()
         job.cancel()
     }
 }

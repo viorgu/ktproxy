@@ -7,7 +7,7 @@ import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLSession
 
 
-interface ConnectionHandler {
+interface ClientConnectionHandler {
     fun sslEngineSource(initialRequest: HttpRequest, userContext: UserContext): SslEngineSource? = null
     fun intercept(initialRequest: HttpRequest, userContext: UserContext): RequestInterceptor? = null
 }
