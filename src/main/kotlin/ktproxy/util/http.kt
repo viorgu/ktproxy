@@ -1,4 +1,4 @@
-package kproxy.util
+package ktproxy.util
 
 import io.netty.buffer.Unpooled
 import io.netty.handler.codec.http.*

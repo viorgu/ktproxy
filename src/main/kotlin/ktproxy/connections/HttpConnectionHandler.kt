@@ -1,4 +1,4 @@
-package kproxy.connections
+package ktproxy.connections
 
 import com.google.common.net.HostAndPort
 import io.netty.handler.codec.http.HttpHeaderNames
@@ -9,10 +9,10 @@ import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
-import kproxy.Config
-import kproxy.RequestInterceptor
-import kproxy.SslEngineSource
-import kproxy.util.*
+import ktproxy.Config
+import ktproxy.RequestInterceptor
+import ktproxy.SslEngineSource
+import ktproxy.util.*
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress

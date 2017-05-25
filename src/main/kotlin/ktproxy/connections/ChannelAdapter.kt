@@ -1,4 +1,4 @@
-package kproxy.connections
+package ktproxy.connections
 
 import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
@@ -13,10 +13,10 @@ import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.selects.SelectBuilder
 import kotlinx.coroutines.experimental.selects.select
-import kproxy.util.LoggerMetadata
-import kproxy.util.buildResponse
-import kproxy.util.join
-import kproxy.util.kLogger
+import ktproxy.util.LoggerMetadata
+import ktproxy.util.buildResponse
+import ktproxy.util.join
+import ktproxy.util.kLogger
 import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 
 

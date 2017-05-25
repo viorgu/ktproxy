@@ -10,7 +10,7 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SupportedCipherSuiteFilter;
-import kproxy.SslEngineSource;
+import ktproxy.SslEngineSource;
 import net.lightbody.bmp.mitm.*;
 import net.lightbody.bmp.mitm.exception.MitmException;
 import net.lightbody.bmp.mitm.exception.SslContextInitializationException;
@@ -45,8 +45,8 @@ import java.util.concurrent.TimeUnit;
  * certificates will be signed using the certificate and private key specified in an {@link #rootCertificateSource}. The impersonated server
  * certificates will be created by the {@link #securityProviderTool} based on the {@link CertificateInfo} returned by the {@link #certificateInfoGenerator}.
  */
-public class KProxyImpersonatingMitmManager implements SslEngineSource {
-    private static final Logger log = LoggerFactory.getLogger(KProxyImpersonatingMitmManager.class);
+public class KtProxyImpersonatingMitmManager implements SslEngineSource {
+    private static final Logger log = LoggerFactory.getLogger(KtProxyImpersonatingMitmManager.class);
 
     /**
      * Cipher suites allowed on proxy connections to upstream servers.
@@ -124,19 +124,19 @@ public class KProxyImpersonatingMitmManager implements SslEngineSource {
     private final CertificateGenerationStatistics statistics = new CertificateGenerationStatistics();
 
     /**
-     * Creates a new ImpersonatingMitmManager. In general, use {@link KProxyImpersonatingMitmManager.Builder}
+     * Creates a new ImpersonatingMitmManager. In general, use {@link KtProxyImpersonatingMitmManager.Builder}
      * to construct new instances.
      */
-    public KProxyImpersonatingMitmManager(CertificateAndKeySource rootCertificateSource,
-                                          KeyGenerator serverKeyGenerator,
-                                          String serverMessageDigest,
-                                          TrustSource trustSource,
-                                          int sslContextCacheConcurrencyLevel,
-                                          long cacheExpirationIntervalMs,
-                                          SecurityProviderTool securityProviderTool,
-                                          CertificateInfoGenerator certificateInfoGenerator,
-                                          Collection<String> serverCipherSuites,
-                                          Collection<String> clientCipherSuites) {
+    public KtProxyImpersonatingMitmManager(CertificateAndKeySource rootCertificateSource,
+                                           KeyGenerator serverKeyGenerator,
+                                           String serverMessageDigest,
+                                           TrustSource trustSource,
+                                           int sslContextCacheConcurrencyLevel,
+                                           long cacheExpirationIntervalMs,
+                                           SecurityProviderTool securityProviderTool,
+                                           CertificateInfoGenerator certificateInfoGenerator,
+                                           Collection<String> serverCipherSuites,
+                                           Collection<String> clientCipherSuites) {
         if (rootCertificateSource == null) {
             throw new IllegalArgumentException("CA root certificate source cannot be null");
         }
@@ -342,7 +342,7 @@ public class KProxyImpersonatingMitmManager implements SslEngineSource {
     }
 
     /**
-     * A Builder for {@link KProxyImpersonatingMitmManager}s. Initialized with suitable default values suitable for most purposes.
+     * A Builder for {@link KtProxyImpersonatingMitmManager}s. Initialized with suitable default values suitable for most purposes.
      */
     public static class Builder {
         private CertificateAndKeySource rootCertificateSource = RootCertificateGenerator.builder().build();
@@ -474,7 +474,7 @@ public class KProxyImpersonatingMitmManager implements SslEngineSource {
             return this;
         }
 
-        public KProxyImpersonatingMitmManager build() {
+        public KtProxyImpersonatingMitmManager build() {
             if (clientCiphers == null) {
                 clientCiphers = SslUtil.getDefaultCipherList();
             }
@@ -483,7 +483,7 @@ public class KProxyImpersonatingMitmManager implements SslEngineSource {
                 serverCiphers = SslUtil.getDefaultCipherList();
             }
 
-            return new KProxyImpersonatingMitmManager(
+            return new KtProxyImpersonatingMitmManager(
                     rootCertificateSource,
                     serverKeyGenerator,
                     serverMessageDigest,

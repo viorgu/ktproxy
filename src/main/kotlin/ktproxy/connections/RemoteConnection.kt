@@ -1,4 +1,4 @@
-package kproxy.connections
+package ktproxy.connections
 
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.Channel
@@ -11,10 +11,10 @@ import io.netty.handler.codec.http.HttpObjectAggregator
 import io.netty.handler.codec.http.HttpRequestEncoder
 import io.netty.handler.codec.http.HttpResponseDecoder
 import io.netty.handler.ssl.SslHandler
-import kproxy.Config
-import kproxy.EventLoops
-import kproxy.util.awaitChannel
-import kproxy.util.join
+import ktproxy.Config
+import ktproxy.EventLoops
+import ktproxy.util.awaitChannel
+import ktproxy.util.join
 import java.net.InetSocketAddress
 import javax.net.ssl.SSLEngine
 

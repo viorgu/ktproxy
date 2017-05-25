@@ -1,4 +1,4 @@
-package kproxy
+package ktproxy
 
 import com.google.common.io.BaseEncoding
 import com.google.common.net.HostAndPort
@@ -16,8 +16,8 @@ import io.netty.util.ResourceLeakDetector
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
-import kproxy.connections.*
-import kproxy.util.*
+import ktproxy.connections.*
+import ktproxy.util.*
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.UnknownHostException
@@ -134,7 +134,7 @@ class ProxyServer(
 
             val sslEngineSource = clientConnectionHandler?.sslEngineSource(initialRequest, userContext)
 
-            val handler: kproxy.connections.ConnectionHandler
+            val handler: ktproxy.connections.ConnectionHandler
 
             if (initialRequest.isConnect) {
                 ReferenceCountUtil.release(initialRequest)

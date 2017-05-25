@@ -2,9 +2,9 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/netty-echo.iml" filepath="$PROJECT_DIR$/.idea/modules/netty-echo.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/netty-echo_main.iml" filepath="$PROJECT_DIR$/.idea/modules/netty-echo_main.iml" group="netty-echo" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/netty-echo_test.iml" filepath="$PROJECT_DIR$/.idea/modules/netty-echo_test.iml" group="netty-echo" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ktproxy.iml" filepath="$PROJECT_DIR$/.idea/modules/ktproxy.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ktproxy_main.iml" filepath="$PROJECT_DIR$/.idea/modules/ktproxy_main.iml" group="ktproxy" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ktproxy_test.iml" filepath="$PROJECT_DIR$/.idea/modules/ktproxy_test.iml" group="ktproxy" />
     </modules>
   </component>
 </project>

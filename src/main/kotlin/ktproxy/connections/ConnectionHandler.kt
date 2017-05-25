@@ -1,8 +1,8 @@
-package kproxy.connections
+package ktproxy.connections
 
-import kproxy.Config
-import kproxy.util.LoggerMetadata
-import kproxy.util.kLogger
+import ktproxy.Config
+import ktproxy.util.LoggerMetadata
+import ktproxy.util.kLogger
 
 
 abstract class ConnectionHandler(

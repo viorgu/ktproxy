@@ -1,11 +1,11 @@
-package kproxy
+package ktproxy
 
 import io.netty.handler.codec.http.*
 import kotlinx.coroutines.experimental.runBlocking
-import kproxy.util.*
+import ktproxy.util.*
 import net.lightbody.bmp.mitm.KeyStoreFileCertificateSource
 import net.lightbody.bmp.mitm.RootCertificateGenerator
-import net.lightbody.bmp.mitm.manager.KProxyImpersonatingMitmManager
+import net.lightbody.bmp.mitm.manager.KtProxyImpersonatingMitmManager
 import java.io.File
 import java.net.InetSocketAddress
 
@@ -24,7 +24,7 @@ fun main(args: Array<String>) = runBlocking {
         }
     }
 
-    val sslEngineSource = KProxyImpersonatingMitmManager.builder()
+    val sslEngineSource = KtProxyImpersonatingMitmManager.builder()
             .rootCertificateSource(rootCertificateGenerator)
             .build()
 

@@ -1,10 +1,10 @@
-package kproxy.connections
+package ktproxy.connections
 
 import io.netty.handler.codec.http.HttpResponseStatus
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
-import kproxy.Config
-import kproxy.util.isKeepAlive
+import ktproxy.Config
+import ktproxy.util.isKeepAlive
 import java.io.IOException
 import java.net.InetSocketAddress
 

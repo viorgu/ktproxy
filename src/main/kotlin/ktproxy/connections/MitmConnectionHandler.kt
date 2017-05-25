@@ -1,4 +1,4 @@
-package kproxy.connections
+package ktproxy.connections
 
 import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpResponse
@@ -8,11 +8,11 @@ import io.netty.util.ReferenceCountUtil
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
-import kproxy.Config
-import kproxy.RequestInterceptor
-import kproxy.SslEngineSource
-import kproxy.util.isKeepAlive
-import kproxy.util.join
+import ktproxy.Config
+import ktproxy.RequestInterceptor
+import ktproxy.SslEngineSource
+import ktproxy.util.isKeepAlive
+import ktproxy.util.join
 import java.io.IOException
 import java.net.InetSocketAddress
 import javax.net.ssl.SSLEngine

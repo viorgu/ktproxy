@@ -1,4 +1,4 @@
-package kproxy
+package ktproxy
 
 import io.netty.handler.codec.http.HttpObject
 import io.netty.handler.codec.http.HttpRequest

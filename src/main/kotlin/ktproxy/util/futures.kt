@@ -1,4 +1,4 @@
-package kproxy.util
+package ktproxy.util
 
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFuture

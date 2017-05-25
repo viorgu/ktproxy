@@ -1,8 +1,8 @@
-package kproxy.connections
+package ktproxy.connections
 
 import io.netty.channel.Channel
 import io.netty.handler.codec.http.*
-import kproxy.Config
+import ktproxy.Config
 import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 
 class ClientConnection(

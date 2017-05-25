@@ -1,4 +1,4 @@
-package kproxy
+package ktproxy
 
 import java.net.InetSocketAddress
 
