@@ -5,7 +5,6 @@
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/netty-echo.iml" filepath="$PROJECT_DIR$/.idea/modules/netty-echo.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/netty-echo_main.iml" filepath="$PROJECT_DIR$/.idea/modules/netty-echo_main.iml" group="netty-echo" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/netty-echo_test.iml" filepath="$PROJECT_DIR$/.idea/modules/netty-echo_test.iml" group="netty-echo" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/other-netty-echo.iml" filepath="$PROJECT_DIR$/.idea/modules/other-netty-echo.iml" />
     </modules>
   </component>
 </project>

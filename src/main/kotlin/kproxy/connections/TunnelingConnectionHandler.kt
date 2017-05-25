@@ -13,7 +13,8 @@ class TunnelingConnectionHandler(
         id: Int,
         config: Config,
         connection: ClientConnection,
-        val remoteAddress: InetSocketAddress) : ConnectionHandler(id, config, connection) {
+        val remoteAddress: InetSocketAddress
+) : ConnectionHandler(id, config, connection) {
 
     private val remote: RemoteConnection
 

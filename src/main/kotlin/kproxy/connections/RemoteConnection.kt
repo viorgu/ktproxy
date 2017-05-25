@@ -6,7 +6,10 @@ import io.netty.channel.ChannelFactory
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.ChannelPipeline
 import io.netty.channel.socket.nio.NioSocketChannel
-import io.netty.handler.codec.http.*
+import io.netty.handler.codec.http.HttpContentDecompressor
+import io.netty.handler.codec.http.HttpObjectAggregator
+import io.netty.handler.codec.http.HttpRequestEncoder
+import io.netty.handler.codec.http.HttpResponseDecoder
 import io.netty.handler.ssl.SslHandler
 import kproxy.Config
 import kproxy.EventLoops
@@ -22,7 +25,8 @@ class RemoteConnection(
         val config: Config,
         val remoteAddress: InetSocketAddress,
         val sslEngine: SSLEngine? = null,
-        val tunnel: Boolean = false) : ChannelAdapter() {
+        val tunnel: Boolean = false
+) : ChannelAdapter() {
 
     override lateinit var channel: Channel
 

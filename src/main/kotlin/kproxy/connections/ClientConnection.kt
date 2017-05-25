@@ -8,7 +8,8 @@ import kotlinx.coroutines.experimental.channels.Channel as AsyncChannel
 class ClientConnection(
         val id: Int,
         override val channel: Channel,
-        val config: Config) : ChannelAdapter() {
+        val config: Config
+) : ChannelAdapter() {
 
     init {
         enableHttpDecoding()

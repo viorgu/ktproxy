@@ -44,16 +44,19 @@ object Config {
 }
 
 
-class ProxyServer(val port: Int = 8088,
-                  val config: Config = Config,
-                  val authenticator: ProxyAuthenticator? = null,
-                  val clientConnectionHandler: ClientConnectionHandler? = null) {
+class ProxyServer(
+        val port: Int = 8088,
+        val config: Config = Config,
+        val authenticator: ProxyAuthenticator? = null,
+        val clientConnectionHandler: ClientConnectionHandler? = null
+) {
 
     val log by kLogger()
 
-    val activeHandlers: MutableList<kproxy.connections.ConnectionHandler> = Collections.synchronizedList(mutableListOf())
-
+    val activeHandlers: MutableList<ConnectionHandler> = Collections.synchronizedList(mutableListOf())
     val nextConnectionId = AtomicInteger()
+
+    var listenAddress: InetSocketAddress? = null
 
     fun start() {
         runBlocking {
@@ -69,7 +72,7 @@ class ProxyServer(val port: Int = 8088,
 
             val channel = server.bind(InetSocketAddress(port)).awaitChannel()
 
-            val listenAddress = channel.localAddress() as InetSocketAddress
+            listenAddress = channel.localAddress() as InetSocketAddress
 
             log.info { "Proxy started at address: $listenAddress" }
         }

@@ -1,12 +1,11 @@
 package kproxy.connections
 
 import com.google.common.net.HostAndPort
-import io.netty.channel.Channel
-import io.netty.channel.ChannelPipeline
-import io.netty.handler.codec.http.*
-import io.netty.handler.ssl.SslHandler
+import io.netty.handler.codec.http.HttpHeaderNames
+import io.netty.handler.codec.http.HttpRequest
+import io.netty.handler.codec.http.HttpResponse
+import io.netty.handler.codec.http.HttpResponseStatus
 import io.netty.util.ReferenceCountUtil
-import jdk.nashorn.internal.runtime.regexp.joni.Config.log
 import kotlinx.coroutines.experimental.Unconfined
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
@@ -20,7 +19,6 @@ import java.net.InetSocketAddress
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
-import javax.net.ssl.SSLEngine
 
 
 class HttpConnectionHandler(
@@ -28,7 +26,8 @@ class HttpConnectionHandler(
         config: Config,
         connection: ClientConnection,
         val interceptor: RequestInterceptor?,
-        val sslEngineSource: SslEngineSource?) : ConnectionHandler(id, config, connection) {
+        val sslEngineSource: SslEngineSource?
+) : ConnectionHandler(id, config, connection) {
 
     val remoteConnections = ConcurrentHashMap<String, RemoteConnection>()
 

@@ -15,7 +15,6 @@ import kproxy.util.isKeepAlive
 import kproxy.util.join
 import java.io.IOException
 import java.net.InetSocketAddress
-import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.SSLEngine
 
 
@@ -25,7 +24,8 @@ class MitmConnectionHandler(
         connection: ClientConnection,
         val remoteAddress: InetSocketAddress,
         val interceptor: RequestInterceptor?,
-        val sslEngineSource: SslEngineSource) : ConnectionHandler(id, config, connection) {
+        val sslEngineSource: SslEngineSource
+) : ConnectionHandler(id, config, connection) {
 
     private val sslEngineServer: SSLEngine
     private val remote: RemoteConnection
